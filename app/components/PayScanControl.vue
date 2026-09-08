@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { BrowserQRCodeReader } from '@zxing/browser'
+import { keepCurrentMediaStream } from '~/lib/media-stream'
 
 const emit = defineEmits<{
   detected: [string]
@@ -19,6 +20,7 @@ const scanError = ref(false)
 
 let stream: MediaStream | undefined
 let animationFrame: number | undefined
+let cameraGeneration = 0
 
 async function togglePanel() {
   if (isOpen.value) {
@@ -32,6 +34,7 @@ async function togglePanel() {
 }
 
 async function startCamera() {
+  const generation = ++cameraGeneration
   cameraError.value = false
   if (!('BarcodeDetector' in window)) {
     cameraError.value = true
@@ -39,16 +42,20 @@ async function startCamera() {
   }
 
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
+    const requestedStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: 'environment' } },
     })
-    if (!isOpen.value || !video.value) {
-      stopCamera()
+    const videoElement = video.value
+    const currentStream = keepCurrentMediaStream(
+      requestedStream,
+      generation === cameraGeneration && isOpen.value && Boolean(videoElement),
+    )
+    if (!currentStream || !videoElement)
       return
-    }
 
-    video.value.srcObject = stream
-    await video.value.play()
+    stream = currentStream
+    videoElement.srcObject = stream
+    await videoElement.play()
     const Detector = window.BarcodeDetector as BarcodeDetectorConstructor
     const detector = new Detector({ formats: ['qr_code'] })
 
@@ -70,8 +77,10 @@ async function startCamera() {
     animationFrame = requestAnimationFrame(() => void detect())
   }
   catch {
-    cameraError.value = true
-    stopCamera()
+    if (generation === cameraGeneration) {
+      cameraError.value = true
+      stopCamera()
+    }
   }
 }
 
@@ -115,6 +124,7 @@ function emitDetected(raw: string) {
 }
 
 function stopCamera() {
+  cameraGeneration++
   if (animationFrame !== undefined) {
     cancelAnimationFrame(animationFrame)
     animationFrame = undefined
