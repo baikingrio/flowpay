@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { keepCurrentMediaStream } from '../app/lib/media-stream'
+import { keepCurrentMediaStream, keepCurrentScannerControls } from '../app/lib/media-stream'
 
 describe('keepCurrentMediaStream', () => {
   it('returns the stream while its camera generation is current', () => {
@@ -14,6 +14,15 @@ describe('keepCurrentMediaStream', () => {
 
     expect(keepCurrentMediaStream(stream, false)).toBeUndefined()
     expect(stream.stop).toHaveBeenCalledOnce()
+  })
+})
+
+describe('keepCurrentScannerControls', () => {
+  it('stops controls created for a stale camera generation', () => {
+    const controls = { stop: vi.fn() }
+
+    expect(keepCurrentScannerControls(controls, false)).toBeUndefined()
+    expect(controls.stop).toHaveBeenCalledOnce()
   })
 })
 

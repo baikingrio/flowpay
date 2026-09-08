@@ -101,18 +101,15 @@ function parseHexTarget(
 ): ParsePaymentUriResult {
   const t = target.trim()
   if (/^0x[0-9a-fA-F]{40}$/.test(t)) {
-    if (!isAddress(t, { strict: false }))
-      return { ok: false, error: 'invalid' }
-    try {
-      return {
-        ok: true,
-        address: getAddress(t),
-        chainId,
-        warnings,
-      }
-    }
-    catch {
+    const body = t.slice(2)
+    const claimsChecksum = body !== body.toLowerCase() && body !== body.toUpperCase()
+    if (claimsChecksum && !isAddress(t, { strict: true }))
       return { ok: false, error: 'checksum' }
+    return {
+      ok: true,
+      address: getAddress(t),
+      chainId,
+      warnings,
     }
   }
   if (t.includes('.') || /^[a-z0-9-]+$/i.test(t)) {

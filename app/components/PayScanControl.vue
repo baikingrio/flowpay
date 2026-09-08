@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { BrowserQRCodeReader } from '@zxing/browser'
-import { keepCurrentMediaStream } from '~/lib/media-stream'
+import { BrowserQRCodeReader, type IScannerControls } from '@zxing/browser'
+import { keepCurrentMediaStream, keepCurrentScannerControls } from '~/lib/media-stream'
 
 const emit = defineEmits<{
   detected: [string]
@@ -19,6 +19,7 @@ const cameraError = ref(false)
 const scanError = ref(false)
 
 let stream: MediaStream | undefined
+let scannerControls: IScannerControls | undefined
 let animationFrame: number | undefined
 let cameraGeneration = 0
 
@@ -37,7 +38,7 @@ async function startCamera() {
   const generation = ++cameraGeneration
   cameraError.value = false
   if (!('BarcodeDetector' in window)) {
-    cameraError.value = true
+    await startZxingCamera(generation)
     return
   }
 
@@ -75,6 +76,34 @@ async function startCamera() {
       animationFrame = requestAnimationFrame(() => void detect())
     }
     animationFrame = requestAnimationFrame(() => void detect())
+  }
+  catch {
+    if (generation === cameraGeneration) {
+      cameraError.value = true
+      stopCamera()
+    }
+  }
+}
+
+async function startZxingCamera(generation: number) {
+  const videoElement = video.value
+  if (!videoElement)
+    return
+
+  try {
+    const reader = new BrowserQRCodeReader()
+    const controls = await reader.decodeFromVideoDevice(
+      undefined,
+      videoElement,
+      (result) => {
+        if (result && generation === cameraGeneration && isOpen.value)
+          emitDetected(result.getText())
+      },
+    )
+    scannerControls = keepCurrentScannerControls(
+      controls,
+      generation === cameraGeneration && isOpen.value,
+    )
   }
   catch {
     if (generation === cameraGeneration) {
@@ -125,6 +154,8 @@ function emitDetected(raw: string) {
 
 function stopCamera() {
   cameraGeneration++
+  scannerControls?.stop()
+  scannerControls = undefined
   if (animationFrame !== undefined) {
     cancelAnimationFrame(animationFrame)
     animationFrame = undefined

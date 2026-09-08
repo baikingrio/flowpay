@@ -52,6 +52,12 @@ describe('parsePaymentUri', () => {
     expect(r).toEqual({ ok: false, error: 'unsupported_function' })
   })
 
+  it('rejects a mixed-case address with an invalid checksum', () => {
+    const badChecksum = '0x000000000000000000000000000000000000DeaD'
+    const r = parsePaymentUri(`ethereum:${badChecksum}@10143`, 10143)
+    expect(r).toEqual({ ok: false, error: 'checksum' })
+  })
+
   it('keeps address when value is garbage', () => {
     const r = parsePaymentUri(`ethereum:${DEAD}@10143?value=nope`, 10143)
     expect(r.ok).toBe(true)

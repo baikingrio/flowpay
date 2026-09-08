@@ -21,6 +21,8 @@ definePageMeta({
 const recipient = ref<string>(FIRST_PAYMENT_TO)
 const amountText = ref(formatMon(FIRST_PAYMENT_VALUE))
 const localError = ref<string | undefined>()
+const localWarning = ref<string | undefined>()
+const externalPrefill = ref(false)
 const toField = ref<HTMLInputElement | null>(null)
 
 const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'] as const
@@ -101,6 +103,7 @@ function pressKey(key: typeof keys[number]) {
 
 async function applyPaymentInput(raw: string): Promise<void> {
   localError.value = undefined
+  localWarning.value = undefined
   const parsed = parsePaymentUri(raw, 10143)
   if (!parsed.ok) {
     localError.value = mapParseError(parsed.error)
@@ -121,13 +124,14 @@ async function applyPaymentInput(raw: string): Promise<void> {
   }
 
   recipient.value = address
+  externalPrefill.value = true
   if (parsed.valueWei !== undefined)
     amountText.value = formatMon(parsed.valueWei)
   for (const warning of parsed.warnings) {
     if (warning === 'missing_chain')
-      localError.value = 'missingChain'
+      localWarning.value = 'missingChain'
     if (warning === 'bad_value')
-      localError.value = 'amountNotImported'
+      localWarning.value = 'amountNotImported'
   }
 }
 
@@ -198,6 +202,10 @@ function onWindowKey(event: KeyboardEvent) {
     pressKey('back')
     return
   }
+  if (event.key === 'Enter' && externalPrefill.value) {
+    event.preventDefault()
+    return
+  }
   if (event.key === 'Enter' && canPay.value)
     void onSend()
 }
@@ -236,6 +244,7 @@ onBeforeUnmount(() => {
             spellcheck="false"
             inputmode="text"
             @blur="applyRecipientIfPaymentInput"
+            @keydown.enter.prevent
             @paste="onRecipientPaste"
           >
           <PayScanControl @detected="applyPaymentInput" />
@@ -302,6 +311,9 @@ onBeforeUnmount(() => {
         <NuxtLink class="underline" :to="explorerHref" external>
           {{ t('explorer') }}
         </NuxtLink>
+      </p>
+      <p v-if="localWarning" class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
+        {{ t(localWarning) }}
       </p>
       <p v-if="localError || account.errorMessage" class="mt-4 text-[14px] leading-[1.43] text-[#e7000b]">
         {{ t(localError || account.errorMessage || '') }}
