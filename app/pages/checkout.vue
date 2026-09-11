@@ -9,6 +9,7 @@ import type { TransferCandidate } from '~/lib/checkout-match'
 import { matchCheckoutTransfer } from '~/lib/checkout-match'
 import { getPublicClient } from '~/lib/ledger'
 import { encodeQrDataUrl } from '~/lib/qr-encode'
+import { blockRanges } from '~/lib/block-ranges'
 
 const { t } = useI18n()
 const account = useAccountStore()
@@ -149,33 +150,44 @@ async function checkForMatch() {
       startBlockNumber.value = latestBlock > lookbackBlocks ? latestBlock - lookbackBlocks : 0n
     }
 
-    const logs = await client.getLogs({
-      address: USDC_ADDRESS,
-      event: {
-        type: 'event',
-        name: 'Transfer',
-        inputs: [
-          { type: 'address', indexed: true, name: 'from' },
-          { type: 'address', indexed: true, name: 'to' },
-          { type: 'uint256', indexed: false, name: 'value' },
-        ],
-      },
-      args: {
-        to: account.address,
-      },
-      fromBlock: startBlockNumber.value,
-      toBlock: 'latest',
-    })
+    const latestBlock = await client.getBlockNumber()
+    const ranges = blockRanges(startBlockNumber.value, latestBlock, 100)
 
     const candidates: TransferCandidate[] = []
-    for (const log of logs) {
-      const block = await client.getBlock({ blockHash: log.blockHash! })
-      candidates.push({
-        hash: log.transactionHash!,
-        to: log.args.to!,
-        value: log.args.value!,
-        timestampMs: Number(block.timestamp) * 1000,
-      })
+
+    for (const [fromBlock, toBlock] of ranges) {
+      try {
+        const logs = await client.getLogs({
+          address: USDC_ADDRESS,
+          event: {
+            type: 'event',
+            name: 'Transfer',
+            inputs: [
+              { type: 'address', indexed: true, name: 'from' },
+              { type: 'address', indexed: true, name: 'to' },
+              { type: 'uint256', indexed: false, name: 'value' },
+            ],
+          },
+          args: {
+            to: account.address,
+          },
+          fromBlock,
+          toBlock,
+        })
+
+        for (const log of logs) {
+          const block = await client.getBlock({ blockHash: log.blockHash! })
+          candidates.push({
+            hash: log.transactionHash!,
+            to: log.args.to!,
+            value: log.args.value!,
+            timestampMs: Number(block.timestamp) * 1000,
+          })
+        }
+      }
+      catch (chunkError) {
+        console.error(`Failed to fetch logs for blocks ${fromBlock}-${toBlock}:`, chunkError)
+      }
     }
 
     const match = matchCheckoutTransfer(intent, candidates, nowMs)
