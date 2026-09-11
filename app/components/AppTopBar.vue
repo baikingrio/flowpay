@@ -25,6 +25,14 @@ const remaining = computed(() => {
   return Math.ceil(ms / 1000)
 })
 
+const sessionStatus = computed(() => {
+  if (account.sessionExpired)
+    return 'expired'
+  if (remaining.value !== undefined)
+    return remaining.value === 0 ? 'expired' : 'active'
+  return undefined
+})
+
 function toggleLocale() {
   setLocale(locale.value === 'zh-CN' ? 'en' : 'zh-CN')
 }
@@ -38,7 +46,10 @@ function lock() {
 <template>
   <header class="flex items-center justify-between px-5 pt-5 pb-2">
     <p class="text-[12px] leading-[1.33] text-[#737373]">
-      <template v-if="remaining !== undefined">
+      <template v-if="sessionStatus === 'expired'">
+        {{ t('sessionExpired') }}
+      </template>
+      <template v-else-if="sessionStatus === 'active'">
         {{ t('sessionLeft', { seconds: remaining }) }}
       </template>
     </p>

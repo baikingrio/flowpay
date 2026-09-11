@@ -32,13 +32,15 @@ function mapOpenError(error: unknown): string {
   return 'passkeyFailed'
 }
 
-function endSession(): void {
+function endSession(reason: 'timer' | 'lock' | 'pagehide' = 'timer'): void {
   clearTimer()
   session?.end()
   session = undefined
   const account = useAccountStore()
   account.hasSession = false
   account.expiresAt = undefined
+  if (reason === 'timer' && account.address !== undefined)
+    account.sessionExpired = true
   if (account.status !== 'error')
     account.status = 'idle'
 }
@@ -51,7 +53,7 @@ function bindPagehide(): void {
     // Biometric sheets can fire pagehide; do not destroy an in-flight open.
     if (event.persisted || opening)
       return
-    endSession()
+    endSession('pagehide')
   })
 }
 
@@ -79,19 +81,20 @@ export function useSigningSession() {
       writeStoredCredentialId(opened.credentialId)
       account.address = opened.address
       account.hasSession = true
+      account.sessionExpired = false
       account.expiresAt = Date.now() + SESSION_MS
       account.status = 'ready'
       account.lastTxHash = undefined
       account.activity = readActivity(opened.address)
       expiresTimer = setTimeout(() => {
-        endSession()
+        endSession('timer')
       }, SESSION_MS)
       // Balance is secondary: never block navigation / mark Passkey as failed.
       void refreshBalance().catch(() => {})
       return true
     }
     catch (error) {
-      endSession()
+      endSession('lock')
       account.status = 'error'
       account.errorMessage = mapOpenError(error)
       return false
@@ -183,12 +186,13 @@ export function useSigningSession() {
   }
 
   function lock(): void {
-    endSession()
+    endSession('lock')
     account.address = undefined
     account.balanceWei = undefined
     account.lastTxHash = undefined
     account.activity = []
     account.errorMessage = undefined
+    account.sessionExpired = false
     account.status = 'idle'
   }
 

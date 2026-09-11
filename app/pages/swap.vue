@@ -204,6 +204,9 @@ onMounted(() => {
           {{ t('explorer') }}
         </NuxtLink>
       </p>
+      <p v-if="account.sessionExpired && !account.hasSession" class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
+        {{ t('sessionExpiredPrompt') }}
+      </p>
       <p v-if="localError || account.errorMessage" class="mt-4 text-[14px] leading-[1.43] text-[#e7000b]">
         {{ t(localError || account.errorMessage || '') }}
       </p>
@@ -216,7 +219,7 @@ onMounted(() => {
       :disabled="account.status === 'opening'"
       @click="open"
     >
-      {{ account.status === 'opening' ? t('opening') : t('start') }}
+      {{ account.status === 'opening' ? t('opening') : account.sessionExpired ? t('continue') : t('start') }}
     </Button>
     <Button
       v-else

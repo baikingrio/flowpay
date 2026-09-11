@@ -65,6 +65,11 @@ const canPay = computed(() =>
   && account.balanceWei > parsedAmount.value,
 )
 
+const isFirstPaymentDefaults = computed(() =>
+  recipient.value.toLowerCase() === FIRST_PAYMENT_TO.toLowerCase()
+  && parsedAmount.value === FIRST_PAYMENT_VALUE,
+)
+
 function parseAmountText(raw: string): bigint | undefined {
   const cleaned = raw.endsWith('.') ? raw.slice(0, -1) : raw
   if (!cleaned || cleaned === '.')
@@ -303,6 +308,9 @@ onBeforeUnmount(() => {
       >
         {{ t('faucet') }}
       </NuxtLink>
+      <p v-if="isFirstPaymentDefaults && !externalPrefill" class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
+        {{ t('firstPaymentHint') }}
+      </p>
       <p v-else-if="insufficient" class="mt-4 text-[14px] leading-[1.43] text-[#e7000b]">
         {{ t('insufficient') }}
       </p>
@@ -311,6 +319,9 @@ onBeforeUnmount(() => {
         <NuxtLink class="underline" :to="explorerHref" external>
           {{ t('explorer') }}
         </NuxtLink>
+      </p>
+      <p v-if="account.sessionExpired && !account.hasSession" class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
+        {{ t('sessionExpiredPrompt') }}
       </p>
       <p v-if="localWarning" class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
         {{ t(localWarning) }}
@@ -327,7 +338,7 @@ onBeforeUnmount(() => {
       :disabled="account.status === 'opening'"
       @click="open"
     >
-      {{ account.status === 'opening' ? t('opening') : t('start') }}
+      {{ account.status === 'opening' ? t('opening') : account.sessionExpired ? t('continue') : t('start') }}
     </Button>
     <Button
       v-else
