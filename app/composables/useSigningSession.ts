@@ -4,6 +4,8 @@ import { readActivity, recordPayment } from '~/lib/activity'
 import { continueThenCreate, isMeraError, PasskeyCancelledError } from '~/lib/account'
 import { readStoredCredentialId, writeStoredCredentialId } from '~/lib/credential'
 import { readBalance, sendPayment } from '~/lib/ledger'
+import type { SwapDirection } from '~/lib/swap'
+import { approveUsdc, getAmountOut, readUsdcAllowance, readUsdcBalance, swapExactETHForTokens, swapExactTokensForETH } from '~/lib/swap'
 import { useAccountStore } from '~/stores/account'
 
 const SESSION_MS = 10 * 60 * 1000
@@ -123,6 +125,59 @@ export function useSigningSession() {
     }
   }
 
+  async function swap(
+    direction: SwapDirection,
+    amountIn: bigint,
+    slippagePercent = 2,
+  ): Promise<`0x${string}` | undefined> {
+    if (session === undefined || account.address === undefined)
+      return undefined
+    account.status = 'sending'
+    account.errorMessage = undefined
+    try {
+      const amountOut = await getAmountOut(amountIn, direction)
+      if (amountOut === 0n)
+        throw new Error('No liquidity')
+
+      const amountOutMin = (amountOut * BigInt(100 - slippagePercent)) / 100n
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+
+      let hash: `0x${string}`
+
+      if (direction === 'monToUsdc') {
+        hash = await swapExactETHForTokens(session, amountIn, amountOutMin, deadline)
+      }
+      else {
+        const allowance = await readUsdcAllowance(account.address, '0x4b2ab38dbf28d31d467aa8993f6c2585981d6804')
+        if (allowance < amountIn)
+          await approveUsdc(session, amountIn)
+
+        hash = await swapExactTokensForETH(session, amountIn, amountOutMin, deadline)
+      }
+
+      account.lastTxHash = hash
+      await refreshBalance()
+      account.status = 'ready'
+      return hash
+    }
+    catch (error) {
+      account.status = 'error'
+      account.errorMessage = 'swapFailed'
+      account.hasSession = session !== undefined
+      return undefined
+    }
+  }
+
+  async function getUsdcBalance(): Promise<bigint> {
+    if (account.address === undefined)
+      return 0n
+    return readUsdcBalance(account.address)
+  }
+
+  async function getSwapQuote(amountIn: bigint, direction: SwapDirection): Promise<bigint> {
+    return getAmountOut(amountIn, direction)
+  }
+
   function lock(): void {
     endSession()
     account.address = undefined
@@ -133,5 +188,5 @@ export function useSigningSession() {
     account.status = 'idle'
   }
 
-  return { open, end: endSession, lock, refreshBalance, send }
+  return { open, end: endSession, lock, refreshBalance, send, swap, getUsdcBalance, getSwapQuote }
 }
