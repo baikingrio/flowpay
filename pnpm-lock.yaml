@@ -41,6 +41,9 @@ importers:
       nuxt:
         specifier: ^4.5.2
         version: 4.5.2(@babel/plugin-syntax-jsx@7.29.7(@babel/core@7.29.7))(@babel/plugin-syntax-typescript@7.29.7(@babel/core@7.29.7))(@oxc-project/types@0.147.0)(@types/node@26.4.1)(@vue/compiler-sfc@3.5.42)(cac@7.0.0)(commander@15.0.0)(db0@0.3.4)(esbuild@0.28.2)(eslint@10.9.1(jiti@2.7.0))(ioredis@5.11.1)(lightningcss@1.33.0)(magicast@0.5.4)(optionator@0.9.4)(oxc-parser@0.141.0)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@5.9.3)(vue@3.5.42(typescript@5.9.3)))(rolldown@1.2.6)(rollup-plugin-visualizer@7.1.1(rolldown@1.2.6)(rollup@4.63.1))(rollup@4.63.1)(srvx@0.11.22)(stylus@0.57.0)(terser@5.51.2)(typescript@5.9.3)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(stylus@0.57.0)(terser@5.51.2)(yaml@2.9.0))(vue-tsc@3.3.11(typescript@5.9.3))(yaml@2.9.0)
+      permissionless:
+        specifier: ^0.4.1
+        version: 0.4.1(viem@2.56.3(typescript@5.9.3)(zod@3.25.76))
       pinia:
         specifier: ^4.0.3
         version: 4.0.3(@vue/devtools-api@8.2.1)(typescript@5.9.3)(vue@3.5.42(typescript@5.9.3))
@@ -5050,6 +5053,15 @@ packages:
 
   perfect-debounce@2.1.0:
     resolution: {integrity: sha512-LjgdTytVFXeUgtHZr9WYViYSM/g8MkcTPYDlPa3cDqMirHjKiSZPYd6DoL7pK8AJQr+uWkQvCjHNdiMqsrJs+g==}
+
+  permissionless@0.4.1:
+    resolution: {integrity: sha512-RhSLhA3Aw3gc1il6unWYfo1K+GBQNGBMSEVwv2gJQN6Ryxv6VoYtutRyIIQ279bPHu6WlRutbw/IxRC8giNamQ==}
+    peerDependencies:
+      ox: ^0.11.3
+      viem: ^2.44.4
+    peerDependenciesMeta:
+      ox:
+        optional: true
 
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
@@ -12010,6 +12022,10 @@ snapshots:
   pathe@2.0.3: {}
 
   perfect-debounce@2.1.0: {}
+
+  permissionless@0.4.1(viem@2.56.3(typescript@5.9.3)(zod@3.25.76)):
+    dependencies:
+      viem: 2.56.3(typescript@5.9.3)(zod@3.25.76)
 
   picocolors@1.1.1: {}
 
