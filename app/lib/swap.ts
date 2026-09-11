@@ -1,27 +1,29 @@
-import { createPublicClient, createWalletClient, encodeAbiParameters, encodeFunctionData, http, parseAbiParameters, type Address } from 'viem'
+import { createPublicClient, createWalletClient, encodeFunctionData, http, type Address } from 'viem'
 import { toViemAccount } from '@category-labs/mera/viem'
 import type { Secp256k1SigningSession } from '@category-labs/mera'
 
 import { chain } from './chain'
 
 /**
- * Uniswap V2 Router02 on Monad Testnet.
- * Official deployment: https://developers.uniswap.org/docs/protocols/v2/deployments
+ * Uniswap V2-style Router on Monad Testnet (PuddleSwap deployment).
+ * Verified: eth_getCode returns non-empty bytecode (35890 bytes)
+ * RPC: https://testnet-rpc.monad.xyz
  */
-const UNISWAP_V2_ROUTER = '0x4b2ab38dbf28d31d467aa8993f6c2585981d6804' as const
+const UNISWAP_V2_ROUTER = '0x430c23895c8D44883526e3E0B09327dAD8766660' as const
 
 /**
  * USDC test token on Monad Testnet.
- * Pool MON/USDC: 0x659bD0BC4167BA25c62E05656F78043E7eD4a9da
- * Source: https://app.uniswap.org/explore/tokens/monad/0x754704Bc059F8C67012fEd69BC8A327a5aafb603
+ * Verified: eth_getCode returns non-empty bytecode (3598 bytes)
+ * Has liquidity pool with WMON via above router
  */
-const USDC_ADDRESS = '0x754704Bc059F8C67012fEd69BC8A327a5aafb603' as const
+const USDC_ADDRESS = '0x534b2f3A21130d7a60830c2Df862319e593943A3' as const
 
 /**
- * Wrapped MON (WMON) on Monad Testnet.
- * Official address: https://docs.monad.xyz/developer-essentials/testnet
+ * WMON (Wrapped MON) used by the router as WETH.
+ * Verified: eth_getCode returns non-empty bytecode (4618 bytes)
+ * This is the WETH address returned by router.WETH(), not the canonical WMON
  */
-const WMON_ADDRESS = '0xFb8bf4c1CC7a94c73D209a149eA2AbEa852BC541' as const
+const WMON_ADDRESS = '0x97b3070f9da6c002343862b35e68bd8e22608943' as const
 
 export type SwapDirection = 'monToUsdc' | 'usdcToMon'
 
@@ -92,7 +94,7 @@ export async function readUsdcAllowance(owner: Address, spender: Address): Promi
 export async function getAmountOut(
   amountIn: bigint,
   direction: SwapDirection,
-): Promise<bigint> {
+): Promise<{ amount: bigint, error?: string }> {
   const client = getPublicClient()
   const path = direction === 'monToUsdc'
     ? [WMON_ADDRESS, USDC_ADDRESS]
@@ -115,10 +117,12 @@ export async function getAmountOut(
       args: [amountIn, path],
     })
     const lastAmount = result[result.length - 1]
-    return lastAmount ?? 0n
+    if (!lastAmount || lastAmount === 0n)
+      return { amount: 0n, error: 'No liquidity' }
+    return { amount: lastAmount }
   }
-  catch {
-    return 0n
+  catch (error) {
+    return { amount: 0n, error: error instanceof Error ? error.message : 'Quote failed' }
   }
 }
 
@@ -229,4 +233,20 @@ export function getUsdcAddress(): Address {
 
 export function getRouterAddress(): Address {
   return UNISWAP_V2_ROUTER
+}
+
+export function getWmonAddress(): Address {
+  return WMON_ADDRESS
+}
+
+export function buildSwapPath(direction: SwapDirection): [Address, Address] {
+  return direction === 'monToUsdc'
+    ? [WMON_ADDRESS, USDC_ADDRESS]
+    : [USDC_ADDRESS, WMON_ADDRESS]
+}
+
+export function calculateMinAmountOut(amountOut: bigint, slippagePercent: number): bigint {
+  if (slippagePercent < 0 || slippagePercent > 100)
+    throw new Error('Slippage must be between 0 and 100')
+  return (amountOut * BigInt(100 - slippagePercent)) / 100n
 }

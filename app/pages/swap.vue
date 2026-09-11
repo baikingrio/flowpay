@@ -69,16 +69,25 @@ const canSwap = computed(() =>
 async function updateQuote() {
   if (!parsedAmountIn.value || parsedAmountIn.value === 0n) {
     amountOut.value = ''
+    localError.value = undefined
     return
   }
   isQuoting.value = true
+  localError.value = undefined
   try {
-    const quote = await getSwapQuote(parsedAmountIn.value, direction.value)
-    const decimals = direction.value === 'monToUsdc' ? 6 : 18
-    amountOut.value = formatUnits(quote, decimals)
+    const { amount: quote, error: quoteError } = await getSwapQuote(parsedAmountIn.value, direction.value)
+    if (quoteError) {
+      localError.value = quoteError === 'No liquidity' ? 'noLiquidity' : 'quoteFailed'
+      amountOut.value = ''
+    }
+    else {
+      const decimals = direction.value === 'monToUsdc' ? 6 : 18
+      amountOut.value = formatUnits(quote, decimals)
+    }
   }
   catch {
     amountOut.value = ''
+    localError.value = 'quoteFailed'
   }
   finally {
     isQuoting.value = false
@@ -86,11 +95,11 @@ async function updateQuote() {
 }
 
 function toggleDirection() {
-  const oldIn = amountIn.value
-  const oldOut = amountOut.value
   direction.value = direction.value === 'monToUsdc' ? 'usdcToMon' : 'monToUsdc'
-  amountIn.value = oldOut
-  amountOut.value = oldIn
+  // Clear amounts and let user enter fresh values
+  amountIn.value = ''
+  amountOut.value = ''
+  localError.value = undefined
 }
 
 async function onSwap() {
@@ -120,12 +129,6 @@ async function loadBalances() {
 
 watch(amountIn, () => {
   void updateQuote()
-})
-
-watch(direction, () => {
-  amountIn.value = ''
-  amountOut.value = ''
-  localError.value = undefined
 })
 
 onMounted(() => {

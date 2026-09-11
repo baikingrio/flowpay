@@ -85,6 +85,8 @@ export default defineI18nConfig(() => ({
       swap: '兑换',
       swapSuccess: '兑换成功',
       swapFailed: '兑换失败,请重试。',
+      noLiquidity: '流动性不足,无法完成兑换。',
+      quoteFailed: '无法获取报价,请稍后重试。',
     },
     en: {
       tagline: 'Self-custodied payments that feel like a normal app — one Face ID / Touch ID, no seed phrase.',
@@ -168,6 +170,8 @@ export default defineI18nConfig(() => ({
       swap: 'Swap',
       swapSuccess: 'Swap successful',
       swapFailed: 'Swap failed. Please try again.',
+      noLiquidity: 'Insufficient liquidity for this swap.',
+      quoteFailed: 'Could not get quote. Please try again later.',
     },
   },
 }))
