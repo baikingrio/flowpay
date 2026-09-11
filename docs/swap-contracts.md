@@ -2,7 +2,7 @@
 
 ## Overview
 
-The P0 Swap implementation uses real deployed contracts on **current Monad Testnet** (chain ID 10143, post-2025-12-16 reset) to swap between native MON and USDC via a Uniswap V2-style router.
+The P0 Swap implementation uses real deployed contracts on **current Monad Testnet** (chain ID 10143, post-2025-12-16 reset) to swap between native MON and USDC via a **Uniswap V2-compatible community router** (PuddleSwap deployment).
 
 **Important**: Monad testnet was reset on 2025-12-16. Many older contract addresses (including previous official Uniswap deployments) now have **no bytecode** and are unusable.
 
