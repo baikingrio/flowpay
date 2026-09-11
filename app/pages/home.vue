@@ -6,9 +6,12 @@ import { shortAddress } from '~/lib/format'
 import { formatMon } from '~/lib/ledger'
 
 const { t } = useI18n()
+const router = useRouter()
 const account = useAccountStore()
+const { signOut } = useSigningSession()
 const copied = ref(false)
 const showReceive = ref(false)
+const showSignOutConfirm = ref(false)
 
 definePageMeta({
   layout: 'shell',
@@ -24,6 +27,20 @@ async function copyAddress() {
   window.setTimeout(() => {
     copied.value = false
   }, 1500)
+}
+
+function confirmSignOut() {
+  showSignOutConfirm.value = true
+}
+
+function cancelSignOut() {
+  showSignOutConfirm.value = false
+}
+
+function handleSignOut() {
+  signOut()
+  showSignOutConfirm.value = false
+  void router.replace('/')
 }
 </script>
 
@@ -109,5 +126,46 @@ async function copyAddress() {
         {{ t('historyEmpty') }}
       </p>
     </section>
+
+    <div class="flex justify-center pt-4">
+      <button
+        type="button"
+        class="text-[14px] leading-[1.43] text-[#737373] underline hover:text-[#0a0a0a]"
+        @click="confirmSignOut"
+      >
+        {{ t('signOut') }}
+      </button>
+    </div>
+
+    <div
+      v-if="showSignOutConfirm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-5"
+      @click.self="cancelSignOut"
+    >
+      <div
+        class="w-full max-w-[320px] rounded-[24px] bg-white p-6 shadow-lg"
+        role="dialog"
+        aria-modal="true"
+      >
+        <p class="text-[16px] leading-[1.5] text-[#0a0a0a]">
+          {{ t('signOutConfirm') }}
+        </p>
+        <div class="mt-6 flex gap-3">
+          <Button
+            variant="outline"
+            class="flex-1 border-[#e5e5e5] bg-white shadow-none"
+            @click="cancelSignOut"
+          >
+            {{ t('signOutCancel') }}
+          </Button>
+          <Button
+            class="flex-1"
+            @click="handleSignOut"
+          >
+            {{ t('signOutButton') }}
+          </Button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

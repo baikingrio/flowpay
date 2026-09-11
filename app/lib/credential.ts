@@ -12,3 +12,9 @@ export function writeStoredCredentialId(credentialId: string): void {
     return
   window.localStorage.setItem(STORAGE_KEY, credentialId)
 }
+
+export function clearStoredCredentialId(): void {
+  if (!import.meta.client)
+    return
+  window.localStorage.removeItem(STORAGE_KEY)
+}

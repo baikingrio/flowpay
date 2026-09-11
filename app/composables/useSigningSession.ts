@@ -1,8 +1,8 @@
 import type { Secp256k1SigningSession } from '@category-labs/mera'
 
-import { readActivity, recordPayment } from '~/lib/activity'
+import { clearActivity, readActivity, recordPayment } from '~/lib/activity'
 import { continueThenCreate, isMeraError, PasskeyCancelledError } from '~/lib/account'
-import { readStoredCredentialId, writeStoredCredentialId } from '~/lib/credential'
+import { clearStoredCredentialId, readStoredCredentialId, writeStoredCredentialId } from '~/lib/credential'
 import { readBalance, sendPayment } from '~/lib/ledger'
 import type { SwapDirection } from '~/lib/swap'
 import { approveUsdc, calculateMinAmountOut, getAmountOut, getRouterAddress, readUsdcAllowance, readUsdcBalance, swapExactETHForTokens, swapExactTokensForETH } from '~/lib/swap'
@@ -191,5 +191,14 @@ export function useSigningSession() {
     account.status = 'idle'
   }
 
-  return { open, end: endSession, lock, refreshBalance, send, swap, getUsdcBalance, getSwapQuote }
+  function signOut(): void {
+    const addr = account.address
+    if (addr !== undefined) {
+      clearActivity(addr)
+    }
+    clearStoredCredentialId()
+    lock()
+  }
+
+  return { open, end: endSession, lock, signOut, refreshBalance, send, swap, getUsdcBalance, getSwapQuote }
 }

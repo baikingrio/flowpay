@@ -46,6 +46,12 @@ export function recordPayment(
   return list
 }
 
+export function clearActivity(address: `0x${string}`): void {
+  if (!import.meta.client)
+    return
+  window.localStorage.removeItem(storageKey(address))
+}
+
 export function shortTxHash(hash: string): string {
   return shortAddress(hash)
 }
