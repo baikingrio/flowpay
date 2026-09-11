@@ -6,12 +6,9 @@ import { shortAddress } from '~/lib/format'
 import { formatMon } from '~/lib/ledger'
 
 const { t } = useI18n()
-const router = useRouter()
 const account = useAccountStore()
-const { signOut } = useSigningSession()
 const copied = ref(false)
 const showReceive = ref(false)
-const showClearConfirm = ref(false)
 
 definePageMeta({
   layout: 'shell',
@@ -28,34 +25,6 @@ async function copyAddress() {
     copied.value = false
   }, 1500)
 }
-
-function confirmClear() {
-  showClearConfirm.value = true
-}
-
-function cancelClear() {
-  showClearConfirm.value = false
-}
-
-function handleClear() {
-  signOut()
-  showClearConfirm.value = false
-  void router.replace('/')
-}
-
-function handleKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && showClearConfirm.value) {
-    cancelClear()
-  }
-}
-
-onMounted(() => {
-  window.addEventListener('keydown', handleKeydown)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', handleKeydown)
-})
 </script>
 
 <template>
@@ -140,46 +109,5 @@ onBeforeUnmount(() => {
         {{ t('historyEmpty') }}
       </p>
     </section>
-
-    <div class="flex justify-center pt-4">
-      <button
-        type="button"
-        class="text-[14px] leading-[1.43] text-[#737373] underline hover:text-[#0a0a0a]"
-        @click="confirmClear"
-      >
-        {{ t('clearLocal') }}
-      </button>
-    </div>
-
-    <div
-      v-if="showClearConfirm"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-5"
-      @click.self="cancelClear"
-    >
-      <div
-        class="w-full max-w-[320px] rounded-[24px] bg-white p-6 shadow-lg"
-        role="dialog"
-        aria-modal="true"
-      >
-        <p class="text-[16px] leading-[1.5] text-[#0a0a0a]">
-          {{ t('clearLocalConfirm') }}
-        </p>
-        <div class="mt-6 flex gap-3">
-          <Button
-            variant="outline"
-            class="flex-1 border-[#e5e5e5] bg-white shadow-none"
-            @click="cancelClear"
-          >
-            {{ t('clearCancel') }}
-          </Button>
-          <Button
-            class="flex-1"
-            @click="handleClear"
-          >
-            {{ t('clearButton') }}
-          </Button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
