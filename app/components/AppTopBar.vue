@@ -1,8 +1,8 @@
 <script setup lang="ts">
-const { t, locale, setLocale } = useI18n()
+import { Settings } from '@lucide/vue'
+
+const { t } = useI18n()
 const account = useAccountStore()
-const { lock: lockSession } = useSigningSession()
-const router = useRouter()
 const now = ref(Date.now())
 
 let tick: ReturnType<typeof setInterval> | undefined
@@ -32,15 +32,6 @@ const sessionStatus = computed(() => {
     return remaining.value === 0 ? 'expired' : 'active'
   return undefined
 })
-
-function toggleLocale() {
-  setLocale(locale.value === 'zh-CN' ? 'en' : 'zh-CN')
-}
-
-function lock() {
-  lockSession()
-  void router.replace('/')
-}
 </script>
 
 <template>
@@ -53,21 +44,12 @@ function lock() {
         {{ t('sessionLeft', { seconds: remaining }) }}
       </template>
     </p>
-    <div class="flex items-center gap-2">
-      <button
-        type="button"
-        class="h-10 rounded-[18px] px-3 text-sm text-foreground"
-        @click="toggleLocale"
-      >
-        {{ t('lang') }}
-      </button>
-      <button
-        type="button"
-        class="h-10 rounded-[18px] border border-[#e5e5e5] bg-white px-3 text-sm text-foreground"
-        @click="lock"
-      >
-        {{ t('lock') }}
-      </button>
-    </div>
+    <NuxtLink
+      to="/settings"
+      class="flex h-10 w-10 items-center justify-center rounded-[18px] border border-[#e5e5e5] bg-white text-[#737373] transition-colors hover:text-[#0a0a0a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0a0a0a]"
+      :aria-label="t('navSettings')"
+    >
+      <Settings class="size-5" :stroke-width="1.75" />
+    </NuxtLink>
   </header>
 </template>
