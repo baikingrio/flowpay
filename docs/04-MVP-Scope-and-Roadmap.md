@@ -16,24 +16,28 @@
 
 ## 功能优先级
 
-### P0（必须完成 — 含 Mera 强制项）
-> 状态核对：`main` @ 2026-09-11（`ff6cc57`）。真机 Passkey / 链上路径仍需本地验收。
+### P0（必须完成 — 含 Mera 强制项 + 当面收款产品路径）
+> 状态核对：`main` @ 2026-09-11（当面收款已发货）。真机 Passkey / 链上路径仍需本地验收。
 
 - [x] 集成 `@category-labs/mera`，完成 createPasskeyWithPrfOutput → EOA 派生
 - [x] 一次 Passkey 仪式的注册 / 登录流程（Continue-first，非 login 分叉）
 - [x] Mera Signing Session 的创建、使用、过期处理（含 pagehide → Continue）
-- [x] 支付页：转账 + Session 感知的签名
+- [x] **商家收银台**（`/checkout`）：USDC 金额键盘 → EIP-681 ERC-20 `/transfer` QR → 客户端轮询 USDC `Transfer` 事件 → 到账匹配（5 分钟窗口）
+- [x] **顾客支付**（`/pay` 扩展）：EIP-681 ERC-20 URI 预填 → Passkey → USDC `transfer`（需 MON Gas；诚实展示水龙头）
+- [x] 支付页：MON 转账 + Session 感知的签名
 - [x] 简单 Swap 页 + 同样的 Session 逻辑（测试网 Uniswap V2 兼容路由 / PuddleSwap，MON ↔ USDC）
 - [x] Stateless 恢复路径（清存储后仍可恢复；设置页「清除本机数据」+ `docs/stateless-recovery.md`）
 - [x] 基础交易历史与余额展示
 - [x] 错误处理与加载状态
 
 ### P1（强烈建议 / 加分）
-- [ ] Gas 赞助（新用户首笔）— **已调研但未发货**：ERC-4337 SA 路径与 EOA 余额模型不兼容（ADR 0010）；EIP-7702 要求 10 MON 储备；当前仍用外部水龙头
-- [x] 收款二维码（Home `PayReceivePanel` / EIP-681）
+- [ ] Gas 赞助（新用户首笔）— **已调研但未发货**：ERC-4337 SA 路径与 EOA 余额模型不兼容（ADR 0010）；EIP-7702 要求 10 MON 储备；当前诚实展示外部水龙头
+- [x] 收款二维码（Home `PayReceivePanel` / EIP-681 + **Checkout 收银台**）
 - [x] 会话状态可视化（剩余时间；TopBar + Settings）
 - [x] 响应式设计（手机壳布局，ADR 0009）
 - [x] 设置页（锁定、清除本机数据、语言、网络；**不做**助记词/密钥导出）
+- [ ] 每日流水汇总（商家端查看当日 USDC 收款总额）
+- [ ] 声音到账广播（可选 polish）
 
 ### P2（时间允许）
 - [ ] 更精细的 Session policy（金额上限等）
@@ -78,8 +82,9 @@
 
 ## 成功标准（可演示 + 可被评委验证）
 
-- 评委可亲自完成：注册 → 支付 → Swap
+- **当面收款演示**：双设备，商家 `/checkout` 输入 USDC 金额 → 生成 QR → 顾客扫码 `/pay` → Passkey → 转账 → 商家端显示到账
+- 评委可亲自完成：注册 → 支付 → Swap（或完整当面收款闭环）
 - 现场可执行 Stateless Test 并成功恢复
 - Session 的 prompt-free 与过期边界清晰可感知
 - 从落地页到第一笔确认交易的时间尽可能短
-- 全程无种子短语、无钱包扩展提示
+- 全程无种子短语、无钱包扩展提示；Gas 费诚实展示水龙头
