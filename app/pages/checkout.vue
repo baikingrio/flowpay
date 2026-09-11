@@ -7,7 +7,7 @@ import { USDC_ADDRESS } from '~/lib/tokens'
 import { clearCheckoutIntent, readCheckoutIntent, stashCheckoutIntent } from '~/lib/pending-checkout'
 import type { TransferCandidate } from '~/lib/checkout-match'
 import { matchCheckoutTransfer } from '~/lib/checkout-match'
-import { getPublicClient } from '~/lib/usdc'
+import { getPublicClient } from '~/lib/ledger'
 import { encodeQrDataUrl } from '~/lib/qr-encode'
 
 const { t } = useI18n()
@@ -18,7 +18,7 @@ definePageMeta({
   layout: 'shell',
 })
 
-type CheckoutState = 'idle' | 'pending' | 'success'
+type CheckoutState = 'idle' | 'pending' | 'success' | 'timeout'
 
 const state = ref<CheckoutState>('idle')
 const amountText = ref('')
@@ -27,6 +27,7 @@ const paymentLink = ref('')
 const qrDataUri = ref('')
 const matchedTxHash = ref<`0x${string}` | undefined>()
 const pollTimer = ref<ReturnType<typeof setInterval> | undefined>()
+const startBlockNumber = ref<bigint | undefined>()
 
 const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'] as const
 
@@ -83,6 +84,7 @@ async function startCheckout() {
   })
 
   paymentUri.value = uri
+  // Use HTTPS pay link (not raw EIP-681) in QR for better mobile app compatibility
   paymentLink.value = `${window.location.origin}${toAppPayPath(uri)}`
   qrDataUri.value = await encodeQrDataUrl(paymentLink.value)
 
@@ -134,11 +136,19 @@ async function checkForMatch() {
   const nowMs = Date.now()
   if (nowMs > intent.startedAt + 300_000) {
     stopPolling()
+    state.value = 'timeout'
     return
   }
 
   try {
     const client = getPublicClient()
+
+    if (!startBlockNumber.value) {
+      const latestBlock = await client.getBlockNumber()
+      const blocksFor10Min = 120n
+      startBlockNumber.value = latestBlock > blocksFor10Min ? latestBlock - blocksFor10Min : 0n
+    }
+
     const logs = await client.getLogs({
       address: USDC_ADDRESS,
       event: {
@@ -150,18 +160,19 @@ async function checkForMatch() {
           { type: 'uint256', indexed: false, name: 'value' },
         ],
       },
-      fromBlock: 'earliest',
+      args: {
+        to: account.address,
+      },
+      fromBlock: startBlockNumber.value,
       toBlock: 'latest',
     })
 
     const candidates: TransferCandidate[] = []
     for (const log of logs) {
-      if (log.args.to?.toLowerCase() !== account.address.toLowerCase())
-        continue
       const block = await client.getBlock({ blockHash: log.blockHash! })
       candidates.push({
         hash: log.transactionHash!,
-        to: log.args.to,
+        to: log.args.to!,
         value: log.args.value!,
         timestampMs: Number(block.timestamp) * 1000,
       })
@@ -196,7 +207,21 @@ onMounted(async () => {
   if (intent && account.address === intent.expectedTo) {
     const amountFormatted = formatUsdcFromBase(intent.amountBase)
     amountText.value = amountFormatted
-    await startCheckout()
+
+    const uri = buildErc20TransferUri({
+      token: USDC_ADDRESS,
+      to: account.address,
+      amount: intent.amountBase,
+      chainId: 10143,
+    })
+
+    paymentUri.value = uri
+    // Use HTTPS pay link (not raw EIP-681) in QR for better mobile app compatibility
+    paymentLink.value = `${window.location.origin}${toAppPayPath(uri)}`
+    qrDataUri.value = await encodeQrDataUrl(paymentLink.value)
+
+    state.value = 'pending'
+    startPolling()
   }
 })
 
@@ -309,6 +334,26 @@ onBeforeUnmount(() => {
           <NuxtLink class="underline" :to="explorerHref" external>
             {{ t('explorer') }}
           </NuxtLink>
+        </p>
+      </div>
+
+      <div class="mt-auto pt-6 w-full">
+        <Button
+          class="w-full"
+          @click="startOver"
+        >
+          {{ t('checkoutAgain') }}
+        </Button>
+      </div>
+    </div>
+
+    <div v-else-if="state === 'timeout'" class="flex flex-1 flex-col items-center justify-center">
+      <div class="text-center">
+        <p class="text-[36px] leading-[1.11] font-semibold tracking-[-0.025em]">
+          {{ formatUsdcFromBase(parsedAmount!) }} USDC
+        </p>
+        <p class="mt-2 text-[14px] leading-[1.43] text-[#737373]">
+          {{ t('checkoutTimeout') }}
         </p>
       </div>
 

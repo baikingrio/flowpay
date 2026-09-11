@@ -37,6 +37,8 @@ export function buildErc20TransferUri(opts: {
   amount: bigint
   chainId?: number
 }): string {
+  if (opts.amount <= 0n)
+    throw new Error('Amount must be greater than 0')
   const chainId = opts.chainId ?? 10143
   const token = getAddress(opts.token)
   const to = getAddress(opts.to)

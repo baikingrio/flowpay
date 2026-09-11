@@ -1,9 +1,10 @@
-import { createPublicClient, createWalletClient, http, type Address } from 'viem'
+import { createWalletClient, http, type Address } from 'viem'
 import { toViemAccount } from '@category-labs/mera/viem'
 import type { Secp256k1SigningSession } from '@category-labs/mera'
 
 import { chain } from './chain'
 import { USDC_ADDRESS } from './tokens'
+import { getPublicClient } from './ledger'
 
 const ERC20_ABI = [
   {
@@ -25,16 +26,8 @@ const ERC20_ABI = [
   },
 ] as const
 
-export function getPublicClient() {
-  return createPublicClient({
-    chain,
-    transport: http(),
-  })
-}
-
 export async function readUsdcBalance(address: Address): Promise<bigint> {
-  const client = getPublicClient()
-  return client.readContract({
+  return getPublicClient().readContract({
     address: USDC_ADDRESS,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
@@ -61,7 +54,8 @@ export async function sendUsdcTransfer(
     args: [to, amountBase],
   })
 
-  const receipt = await getPublicClient().waitForTransactionReceipt({ hash })
+  const client = getPublicClient()
+  const receipt = await client.waitForTransactionReceipt({ hash })
   if (receipt.status !== 'success')
     throw new Error('USDC transfer failed')
 
