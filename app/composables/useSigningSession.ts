@@ -5,6 +5,7 @@ import { continueThenCreate, isMeraError, PasskeyCancelledError } from '~/lib/ac
 import { clearStoredCredentialId, readStoredCredentialId, writeStoredCredentialId } from '~/lib/credential'
 import { readBalance, sendPayment } from '~/lib/ledger'
 import { clearPendingPayUri } from '~/lib/pending-pay-uri'
+import { shouldSetSessionExpired } from '~/lib/session-expiry'
 import type { SwapDirection } from '~/lib/swap'
 import { approveUsdc, calculateMinAmountOut, getAmountOut, getRouterAddress, readUsdcAllowance, readUsdcBalance, swapExactETHForTokens, swapExactTokensForETH } from '~/lib/swap'
 import { useAccountStore } from '~/stores/account'
@@ -32,14 +33,14 @@ function mapOpenError(error: unknown): string {
   return 'passkeyFailed'
 }
 
-function endSession(reason: 'timer' | 'lock' | 'pagehide' = 'timer'): void {
+function endSession(reason: 'timer' | 'lock' | 'pagehide' | 'error' = 'timer'): void {
   clearTimer()
   session?.end()
   session = undefined
   const account = useAccountStore()
   account.hasSession = false
   account.expiresAt = undefined
-  if (reason === 'timer' && account.address !== undefined)
+  if (shouldSetSessionExpired(reason, account.address !== undefined))
     account.sessionExpired = true
   if (account.status !== 'error')
     account.status = 'idle'
@@ -94,7 +95,7 @@ export function useSigningSession() {
       return true
     }
     catch (error) {
-      endSession('lock')
+      endSession('error')
       account.status = 'error'
       account.errorMessage = mapOpenError(error)
       return false

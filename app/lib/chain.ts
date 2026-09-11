@@ -8,3 +8,9 @@ export const FIRST_PAYMENT_TO = '0x000000000000000000000000000000000000dEaD' as 
 
 /** Prefill amount for First Payment (0.001 MON). */
 export const FIRST_PAYMENT_VALUE = 10n ** 15n
+
+/** Returns true if recipient and amount match First Payment defaults. */
+export function isFirstPaymentDefaults(recipient: string, amount: bigint | undefined): boolean {
+  return recipient.toLowerCase() === FIRST_PAYMENT_TO.toLowerCase()
+    && amount === FIRST_PAYMENT_VALUE
+}

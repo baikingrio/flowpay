@@ -1,40 +1,66 @@
 import { describe, expect, it } from 'vitest'
-import { FIRST_PAYMENT_TO, FIRST_PAYMENT_VALUE } from '../app/lib/chain'
+import { FIRST_PAYMENT_TO, FIRST_PAYMENT_VALUE, isFirstPaymentDefaults } from '../app/lib/chain'
+import { shouldSetSessionExpired } from '../app/lib/session-expiry'
 
-describe('session expiry UX helpers', () => {
-  describe('first payment defaults detection', () => {
-    it('should identify First Payment defaults correctly', () => {
-      const recipient = FIRST_PAYMENT_TO
-      const amount = FIRST_PAYMENT_VALUE
-
-      expect(recipient.toLowerCase()).toBe('0x000000000000000000000000000000000000dead')
-      expect(amount).toBe(10n ** 15n)
+describe('session expiry UX', () => {
+  describe('isFirstPaymentDefaults', () => {
+    it('should return true when both recipient and amount match defaults', () => {
+      expect(isFirstPaymentDefaults(FIRST_PAYMENT_TO, FIRST_PAYMENT_VALUE)).toBe(true)
     })
 
-    it('should not match when recipient differs', () => {
-      const recipient = '0x0000000000000000000000000000000000000001'
-      const amount = FIRST_PAYMENT_VALUE
-
-      expect(recipient.toLowerCase()).not.toBe(FIRST_PAYMENT_TO.toLowerCase())
-      expect(amount).toBe(FIRST_PAYMENT_VALUE)
+    it('should be case-insensitive for recipient address', () => {
+      expect(isFirstPaymentDefaults('0x000000000000000000000000000000000000DEAD', FIRST_PAYMENT_VALUE)).toBe(true)
+      expect(isFirstPaymentDefaults('0x000000000000000000000000000000000000DeAd', FIRST_PAYMENT_VALUE)).toBe(true)
     })
 
-    it('should not match when amount differs', () => {
-      const recipient = FIRST_PAYMENT_TO
-      const amount = 10n ** 16n
+    it('should return false when recipient differs', () => {
+      const differentRecipient = '0x0000000000000000000000000000000000000001'
+      expect(isFirstPaymentDefaults(differentRecipient, FIRST_PAYMENT_VALUE)).toBe(false)
+    })
 
-      expect(recipient.toLowerCase()).toBe(FIRST_PAYMENT_TO.toLowerCase())
-      expect(amount).not.toBe(FIRST_PAYMENT_VALUE)
+    it('should return false when amount differs', () => {
+      expect(isFirstPaymentDefaults(FIRST_PAYMENT_TO, 10n ** 16n)).toBe(false)
+      expect(isFirstPaymentDefaults(FIRST_PAYMENT_TO, 0n)).toBe(false)
+    })
+
+    it('should return false when amount is undefined', () => {
+      expect(isFirstPaymentDefaults(FIRST_PAYMENT_TO, undefined)).toBe(false)
+    })
+
+    it('should return false when both differ', () => {
+      expect(isFirstPaymentDefaults('0x1234567890123456789012345678901234567890', 999n)).toBe(false)
     })
   })
 
-  describe('session expiry reason tracking', () => {
-    it('should differentiate timer expiry from explicit lock', () => {
-      const reasons = ['timer', 'lock', 'pagehide'] as const
+  describe('shouldSetSessionExpired', () => {
+    it('should return true for timer reason when address exists', () => {
+      expect(shouldSetSessionExpired('timer', true)).toBe(true)
+    })
 
-      reasons.forEach((reason) => {
-        expect(['timer', 'lock', 'pagehide']).toContain(reason)
-      })
+    it('should return true for pagehide reason when address exists', () => {
+      expect(shouldSetSessionExpired('pagehide', true)).toBe(true)
+    })
+
+    it('should return false for lock reason even when address exists', () => {
+      expect(shouldSetSessionExpired('lock', true)).toBe(false)
+    })
+
+    it('should return false for error reason even when address exists', () => {
+      expect(shouldSetSessionExpired('error', true)).toBe(false)
+    })
+
+    it('should return false for any reason when no address exists', () => {
+      expect(shouldSetSessionExpired('timer', false)).toBe(false)
+      expect(shouldSetSessionExpired('pagehide', false)).toBe(false)
+      expect(shouldSetSessionExpired('lock', false)).toBe(false)
+      expect(shouldSetSessionExpired('error', false)).toBe(false)
+    })
+
+    it('should distinguish mobile pagehide from explicit lock', () => {
+      // Mobile pagehide with account = session expired, show Continue
+      expect(shouldSetSessionExpired('pagehide', true)).toBe(true)
+      // Explicit lock = clear everything, do not show Continue
+      expect(shouldSetSessionExpired('lock', true)).toBe(false)
     })
   })
 })

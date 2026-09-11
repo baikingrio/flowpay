@@ -2,7 +2,7 @@
 import { Delete } from '@lucide/vue'
 import { isAddress, parseEther, type Address } from 'viem'
 import { Button } from '@/components/ui/button'
-import { FAUCET_URL, FIRST_PAYMENT_TO, FIRST_PAYMENT_VALUE } from '~/lib/chain'
+import { FAUCET_URL, FIRST_PAYMENT_TO, FIRST_PAYMENT_VALUE, isFirstPaymentDefaults } from '~/lib/chain'
 import { parsePaymentUri, type ParsePaymentUriFailure } from '~/lib/eip681'
 import { resolveEnsName } from '~/lib/ens'
 import { shortAddress } from '~/lib/format'
@@ -65,9 +65,8 @@ const canPay = computed(() =>
   && account.balanceWei > parsedAmount.value,
 )
 
-const isFirstPaymentDefaults = computed(() =>
-  recipient.value.toLowerCase() === FIRST_PAYMENT_TO.toLowerCase()
-  && parsedAmount.value === FIRST_PAYMENT_VALUE,
+const isFirstPayment = computed(() =>
+  isFirstPaymentDefaults(recipient.value, parsedAmount.value),
 )
 
 function parseAmountText(raw: string): bigint | undefined {
@@ -308,7 +307,7 @@ onBeforeUnmount(() => {
       >
         {{ t('faucet') }}
       </NuxtLink>
-      <p v-if="isFirstPaymentDefaults && !externalPrefill" class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
+      <p v-if="isFirstPayment && !externalPrefill" class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
         {{ t('firstPaymentHint') }}
       </p>
       <p v-else-if="insufficient" class="mt-4 text-[14px] leading-[1.43] text-[#e7000b]">
