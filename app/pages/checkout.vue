@@ -10,6 +10,7 @@ import { matchCheckoutTransfer } from '~/lib/checkout-match'
 import { getPublicClient } from '~/lib/ledger'
 import { encodeQrDataUrl } from '~/lib/qr-encode'
 import { blockRanges } from '~/lib/block-ranges'
+import { recordCheckoutReceipt } from '~/lib/checkout-ledger'
 
 const { t } = useI18n()
 const account = useAccountStore()
@@ -193,6 +194,13 @@ async function checkForMatch() {
     const match = matchCheckoutTransfer(intent, candidates, nowMs)
     if (match) {
       matchedTxHash.value = match.hash
+      if (account.address) {
+        recordCheckoutReceipt(account.address, {
+          hash: match.hash,
+          amountBase: intent.amountBase,
+          to: intent.expectedTo,
+        })
+      }
       state.value = 'success'
       stopPolling()
       clearCheckoutIntent()
