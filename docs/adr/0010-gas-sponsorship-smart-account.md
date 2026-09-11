@@ -1,60 +1,125 @@
-# Gas sponsorship for First Payment via smart account
+# Gas sponsorship investigation (blocked)
 
-**Status**: accepted
+**Status**: investigated, **not shipped** — architecture blocker documented below
 
 ## Context
 
-New users with 0 MON balance cannot pay gas for First Payment and must leave to an external faucet (ADR 0002 forbids Flowpay operating a paymaster). Monad testnet supports two account abstraction paths:
+P1 requested gas sponsorship for First Payment so new users with 0 MON don't need an external faucet. Monad testnet offers two theoretical paths:
 
-1. **EIP-7702**: Temporary EOA delegation
-   - Requires 10 MON minimum reserve balance
-   - Defeats the purpose for 0-balance users
+1. **EIP-7702**: EOA delegation
+   - Requires **10 MON minimum reserve balance**
+   - Defeats the purpose for 0-balance or low-balance users
    
 2. **ERC-4337**: Smart account + third-party paymaster
-   - Works for 0-balance users
-   - Changes user-facing address from EOA to smart account
-   - Pimlico supports Monad testnet with Kernel v0.3 + EntryPoint v0.7
+   - Can sponsor gas (not value)
+   - BUT: creates an EOA ≠ smart account funding mismatch (blocker below)
 
 ## Decision
 
-Implement **optional smart account sponsorship** for First Payment (and potentially early transactions) when the user cannot afford gas:
+**Do not ship** the ERC-4337 sponsored send path in this iteration. Retain scaffolding code + tests as future reference, but remove integration into the live send flow.
 
-- **EOA remains primary**: Users with balance continue using the Passkey-derived EOA directly (no change to existing flow).
-- **Smart account as fallback**: When `balance < gasEstimate + value`, attempt sponsored transaction via a **Kernel smart account** owned by the EOA.
-- **Deterministic derivation**: Smart account address is derived deterministically from the EOA address (salt=0 or derived from EOA), preserving **stateless recovery** (Passkey → EOA → Smart Account address is reproducible).
-- **Third-party paymaster**: Pimlico (or similar) sponsors gas on Monad testnet via ERC-4337 bundler + paymaster RPC.
-- **Honest UI**: Display the smart account address when sponsorship is used; never pretend it's the same as EOA or that Flowpay holds gas funds.
+**Reason**: Architecture blocker makes the feature misleading or broken for the intended use case.
+
+## The Blocker: EOA ≠ Smart Account Purse
+
+### Current architecture (ADR 0001 + 0002)
+- **Passkey PRF** → **EOA** (user's self-custodied address)
+- Faucet sends MON → EOA
+- User receives payments → EOA
+- **EOA holds the balance**
+
+### ERC-4337 Smart Account Reality
+- Kernel smart account is a **separate contract address** (deterministic from EOA + index, but distinct)
+- When sending via `smartAccountClient.sendTransaction({ value })`, **the SA contract must hold `value`**
+- Pimlico paymaster sponsors **gas only**, not the `value` being transferred
+- **SA has 0 MON** (funds are on EOA)
+- Transaction fails: "insufficient funds" at SA level
+
+### Why "Transfer EOA → SA First" Doesn't Work
+- Transferring `value` from EOA to SA costs gas
+- If user has 0 MON or only has `value` without gas buffer → can't fund SA
+- Defeats the entire purpose of gas sponsorship
+
+### Coherent Paths That Would Work
+
+**Option A** (requires UX redesign):
+- When sponsorship is enabled, **receive address = SA** (not EOA)
+- Display **SA balance** (not EOA balance)
+- User receives funds directly to SA
+- Sponsored send works because SA holds `value`
+- **Trade-off**: Users see SA address (0xABCD...), not their Passkey-derived EOA. Confusing mental model; breaks "Passkey → EOA" story.
+
+**Option B** (requires different sponsor model):
+- Find an EOA-preserving gas sponsor mechanism that works on Monad testnet without 10 MON reserve
+- EIP-7702 requires reserve (documented above)
+- No known alternative on Monad testnet at time of investigation
+
+**Option C** (narrow use case, not worth building for P1):
+- Only enable sponsorship after user **already has funds on the SA** (received there manually)
+- Doesn't help new users with 0 MON
+- Adds cognitive load with two addresses
+- Out of MVP scope
+
+## What We Implemented (For Future Reference)
+
+Module: `app/lib/sponsored.ts`
+- Pimlico bundler + paymaster client setup
+- Kernel v0.3.1 smart account creation (deterministic, index=0)
+- `sendSponsoredPayment()` function
+- Helper utilities
+
+Tests: `tests/sponsored.test.ts`
+- Unit tests for gas estimation, needsSponsorship logic
+
+**Not integrated into live send flow** — integration was removed after code review identified the blocker.
 
 ## Consequences
 
 ### Positive
-- New users can complete First Payment without leaving for faucet
-- Stateless recovery still works: same Passkey → same EOA → same smart account address
-- No custody backend required (ADR 0002 maintained)
-- Standard ERC-4337 path with ecosystem tooling
+- Honest product: we don't claim "0 MON First Payment without faucet" when it doesn't actually work
+- Stateless recovery story remains clean (Passkey → EOA, no SA confusion)
+- Code preserved for future work if architecture changes
 
 ### Negative
-- User sees two addresses: EOA for normal transactions, smart account for sponsored ones
-- Slightly more complex UX explanation needed
-- Additional dependency on Pimlico API (testnet free tier)
-- Smart account deployment transaction (bundler handles this transparently on first use)
+- P1 Gas sponsorship requirement **not met** for MVP
+- New users still need external faucet for First Payment
+- Monad testnet has no better path available today
 
-### Mitigation
-- Clear UI indicating sponsorship mode and smart account address
-- Graceful fallback to faucet link if sponsorship fails
-- Feature-flag or environment check to disable if needed
-- Document API key setup in `.env.example` and README
+## Future Work
 
-## Technical Implementation
+If the team wants to ship gas sponsorship:
 
-- `pnpm add permissionless viem/account-abstraction`
-- New module: `app/lib/sponsored.ts` with `sendSponsoredPayment(session, to, value)`
-- Modify `send()` in `useSigningSession`: check balance → attempt sponsor if insufficient → fallback to faucet CTA
-- Environment variable: `NUXT_PUBLIC_PIMLICO_API_KEY` (testnet)
-- Display smart account address in UI when sponsorship path is used
+1. **Redesign for SA-primary model** (Option A)
+   - SA is the user-facing address
+   - EOA is hidden (signing key owner)
+   - Receive/QR shows SA address
+   - Display SA balance
+   - Requires new ADR, UX changes, and clear "your address" messaging
 
-## Alternatives Considered
+2. **Wait for better EOA sponsor primitives** (Option B)
+   - EIP-7702 without reserve requirement
+   - Or Monad-specific paymaster that can debit EOA while sponsoring SA gas
 
-- **Operate Flowpay paymaster**: Rejected per ADR 0002
-- **EIP-7702 only**: Rejected because 10 MON reserve defeats 0-balance case
-- **Always use smart account**: Rejected to keep EOA as primary (simpler, no address confusion for users with balance)
+3. **Custodial relayer** (violates ADR 0002, not recommended)
+   - Flowpay backend holds small MON buffer
+   - Relays first N transactions per user
+   - Breaks "no custody" promise
+
+## Client-Exposed API Key Risk
+
+The scaffolding uses `NUXT_PUBLIC_PIMLICO_API_KEY`, which is visible in client bundle.
+
+**Risk**: Malicious users can extract the key and abuse testnet sponsorship quota.
+
+**Mitigation** (if shipping in future):
+- Move paymaster logic to Nitro server route (`/api/sponsor`)
+- Keep key in `PIMLICO_API_KEY` (server-only)
+- Rate-limit per session or EOA address
+- Or use Pimlico's user-operation policies with allowlists
+
+## References
+
+- Monad docs: EIP-7702 reserve requirement (10 MON)
+- Pimlico docs: Paymaster sponsors gas, not value
+- Permissionless.js: ERC-4337 smart account clients
+

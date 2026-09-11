@@ -12,6 +12,19 @@ import { chain } from './chain'
 const PIMLICO_API_KEY = import.meta.env.NUXT_PUBLIC_PIMLICO_API_KEY
 
 /**
+ * ⚠️ WARNING: This module is NOT INTEGRATED into the live send flow.
+ * 
+ * Reason: Architecture blocker (see ADR 0010).
+ * - Funds sit on the Passkey-derived EOA
+ * - Sponsored send tries to debit from the smart account (separate address, usually empty)
+ * - Pimlico paymaster sponsors gas ONLY, not the transfer value
+ * - Transaction fails: "insufficient funds" at SA level
+ * 
+ * Keeping this code as scaffolding for future work if architecture changes.
+ * See ADR 0010 for full blocker documentation and potential solutions.
+ */
+
+/**
  * Checks if gas sponsorship is available (API key configured).
  */
 export function isSponsorshipAvailable(): boolean {
@@ -38,14 +51,17 @@ export function needsSponsorship(balance: bigint, value: bigint): boolean {
 }
 
 /**
+ * ⚠️ NOT USED IN LIVE FLOW — See module warning above.
+ * 
  * Sends a sponsored payment via ERC-4337 smart account + Pimlico paymaster.
  * 
- * Creates a deterministic Kernel smart account owned by the session's EOA,
- * then submits the transaction via Pimlico bundler with gas sponsorship.
+ * BLOCKER: This function assumes the smart account holds `value`. In Flowpay's
+ * current architecture, funds sit on the EOA (Passkey-derived), not the SA.
+ * Calling this with EOA balance will fail because SA balance is 0.
  * 
  * @param session - Mera signing session (EOA signer)
  * @param to - Recipient address
- * @param value - Amount in wei
+ * @param value - Amount in wei (must be held by the smart account, not EOA)
  * @returns Transaction hash
  * @throws Error if sponsorship is unavailable or transaction fails
  */
@@ -117,6 +133,8 @@ export async function sendSponsoredPayment(
 }
 
 /**
+ * ⚠️ NOT USED IN LIVE FLOW — See module warning above.
+ * 
  * Returns the deterministic smart account address for a given EOA.
  * Useful for displaying to the user before sending.
  */

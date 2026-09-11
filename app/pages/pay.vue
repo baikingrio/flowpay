@@ -318,9 +318,6 @@ onBeforeUnmount(() => {
         <NuxtLink class="underline" :to="explorerHref" external>
           {{ t('explorer') }}
         </NuxtLink>
-        <span v-if="account.usedSponsorship" class="ml-2 text-[#737373]">
-          ({{ t('sponsored') }})
-        </span>
       </p>
       <p v-if="account.sessionExpired && !account.hasSession" class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
         {{ t('sessionExpiredPrompt') }}

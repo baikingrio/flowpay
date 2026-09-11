@@ -15,6 +15,5 @@ export const useAccountStore = defineStore('account', {
     errorMessage: undefined as string | undefined,
     lastTxHash: undefined as `0x${string}` | undefined,
     activity: [] as ActivityPayment[],
-    usedSponsorship: false,
   }),
 })
