@@ -8,6 +8,7 @@ import { resolveEnsName } from '~/lib/ens'
 import { shortAddress } from '~/lib/format'
 import { formatMon } from '~/lib/ledger'
 import { clearPendingPayUri, readPendingPayUri } from '~/lib/pending-pay-uri'
+import { USDC_ADDRESS } from '~/lib/tokens'
 import { formatUsdcFromBase, parseUsdcToBase } from '~/lib/usdc-amount'
 
 const { t } = useI18n()
@@ -148,6 +149,10 @@ async function applyPaymentInput(raw: string): Promise<void> {
   externalPrefill.value = true
 
   if (parsed.tokenAddress && parsed.tokenAmount !== undefined) {
+    if (parsed.tokenAddress.toLowerCase() !== USDC_ADDRESS.toLowerCase()) {
+      localError.value = 'unsupportedToken'
+      return
+    }
     asset.value = 'usdc'
     amountText.value = formatUsdcFromBase(parsed.tokenAmount)
   }

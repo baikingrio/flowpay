@@ -145,8 +145,8 @@ async function checkForMatch() {
 
     if (!startBlockNumber.value) {
       const latestBlock = await client.getBlockNumber()
-      const blocksFor10Min = 120n
-      startBlockNumber.value = latestBlock > blocksFor10Min ? latestBlock - blocksFor10Min : 0n
+      const lookbackBlocks = 2000n
+      startBlockNumber.value = latestBlock > lookbackBlocks ? latestBlock - lookbackBlocks : 0n
     }
 
     const logs = await client.getLogs({
