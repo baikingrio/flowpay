@@ -97,6 +97,9 @@ onMounted(stashQueryUri)
         <p class="mt-2 max-w-[36ch] text-[13px] leading-[1.4] text-[#0a0a0a]/70">
           {{ t('judgeCue') }}
         </p>
+        <p class="mt-2 max-w-[36ch] text-[13px] leading-[1.4] text-[#737373]">
+          {{ t('returnHint') }}
+        </p>
 
         <p
           v-if="account.errorMessage"

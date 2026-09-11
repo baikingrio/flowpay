@@ -11,7 +11,7 @@ const account = useAccountStore()
 const { signOut } = useSigningSession()
 const copied = ref(false)
 const showReceive = ref(false)
-const showSignOutConfirm = ref(false)
+const showClearConfirm = ref(false)
 
 definePageMeta({
   layout: 'shell',
@@ -29,19 +29,33 @@ async function copyAddress() {
   }, 1500)
 }
 
-function confirmSignOut() {
-  showSignOutConfirm.value = true
+function confirmClear() {
+  showClearConfirm.value = true
 }
 
-function cancelSignOut() {
-  showSignOutConfirm.value = false
+function cancelClear() {
+  showClearConfirm.value = false
 }
 
-function handleSignOut() {
+function handleClear() {
   signOut()
-  showSignOutConfirm.value = false
+  showClearConfirm.value = false
   void router.replace('/')
 }
+
+function handleKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && showClearConfirm.value) {
+    cancelClear()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeydown)
+})
 </script>
 
 <template>
@@ -131,16 +145,16 @@ function handleSignOut() {
       <button
         type="button"
         class="text-[14px] leading-[1.43] text-[#737373] underline hover:text-[#0a0a0a]"
-        @click="confirmSignOut"
+        @click="confirmClear"
       >
-        {{ t('signOut') }}
+        {{ t('clearLocal') }}
       </button>
     </div>
 
     <div
-      v-if="showSignOutConfirm"
+      v-if="showClearConfirm"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-5"
-      @click.self="cancelSignOut"
+      @click.self="cancelClear"
     >
       <div
         class="w-full max-w-[320px] rounded-[24px] bg-white p-6 shadow-lg"
@@ -148,21 +162,21 @@ function handleSignOut() {
         aria-modal="true"
       >
         <p class="text-[16px] leading-[1.5] text-[#0a0a0a]">
-          {{ t('signOutConfirm') }}
+          {{ t('clearLocalConfirm') }}
         </p>
         <div class="mt-6 flex gap-3">
           <Button
             variant="outline"
             class="flex-1 border-[#e5e5e5] bg-white shadow-none"
-            @click="cancelSignOut"
+            @click="cancelClear"
           >
-            {{ t('signOutCancel') }}
+            {{ t('clearCancel') }}
           </Button>
           <Button
             class="flex-1"
-            @click="handleSignOut"
+            @click="handleClear"
           >
-            {{ t('signOutButton') }}
+            {{ t('clearButton') }}
           </Button>
         </div>
       </div>

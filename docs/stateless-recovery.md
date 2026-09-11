@@ -11,6 +11,10 @@ Flowpay implements **stateless recovery**: the same Passkey produces the same Ac
 
 **These are NOT required for recovery.** Clearing site data does not destroy your Account.
 
+### sessionStorage (UI state)
+
+- `flowpay.pendingPayUri` — queued payment URI from ?uri= parameter
+
 ### Memory only (ephemeral)
 
 - Signing Session (PRF output / private key)
@@ -37,26 +41,26 @@ Only payments sent from this device. Not a full chain index.
 ❌ **Acceleration hint**  
 Continue will show the platform Passkey picker. Slightly slower, but recovers the same Account.
 
-## Sign Out vs Lock
+## Lock vs Clear this browser
 
 ### Lock
 Ends the signing session and clears in-memory state. Does **not** clear localStorage (credentialId, activity). Use Lock to pause briefly and Continue without re-selecting your Passkey.
 
-### Sign Out
-Clears localStorage (credentialId + activity) **and** ends the session. Does **not** delete your Passkey. Use Sign Out to clear this device's records while keeping your Account.
+### Clear this browser
+Clears localStorage (credentialId + activity) + sessionStorage (pending URI) **and** ends the session. Does **not** delete your Passkey. Use "Clear this browser" to remove this device's records while keeping your Account.
 
 ## Recovery scenarios
 
-### After signing out
+### After clearing this browser
 
-1. User clicks "Sign Out" → localStorage cleared, Passkey kept
+1. User clicks "Clear this browser" → localStorage cleared, Passkey kept
 2. User clicks "Continue" → no stored credentialId → platform Passkey picker
 3. User selects their Passkey → same PRF → **same Account/address**
 4. Activity cache is empty, but balance comes from RPC
 
 ### After clearing site data
 
-Same as signing out: localStorage gone, Passkey kept (stored in authenticator), same recovery flow.
+Same as clearing this browser: localStorage gone, Passkey kept (stored in authenticator), same recovery flow.
 
 ### On a new device
 
@@ -70,7 +74,7 @@ User on a new device with the same Passkey (synced via iCloud Keychain, Windows 
 ## Manual verification
 
 1. **Record your address**: note the address on the Home screen
-2. **Sign out**: click "Sign Out" on the Home screen
+2. **Clear this browser**: click "Clear this browser" on the Home screen
 3. **Continue**: click "Continue with Face ID / Touch ID" on the landing page
 4. **Verify**: the address matches, balance is fetched from RPC
 
@@ -80,5 +84,6 @@ User on a new device with the same Passkey (synced via iCloud Keychain, Windows 
 - `continueThenCreate` always tries Continue first (ADR 0005)
 - Signing Session is ephemeral, never in storage (ADR 0006, 0007)
 - Browser-only: no Flowpay backend holds keys or indexes accounts (ADR 0002)
+- `signOut` in `useSigningSession` clears all local acceleration: credential, activity, pending URI
 
 See also: `docs/adr/`

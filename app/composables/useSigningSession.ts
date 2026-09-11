@@ -4,6 +4,7 @@ import { clearActivity, readActivity, recordPayment } from '~/lib/activity'
 import { continueThenCreate, isMeraError, PasskeyCancelledError } from '~/lib/account'
 import { clearStoredCredentialId, readStoredCredentialId, writeStoredCredentialId } from '~/lib/credential'
 import { readBalance, sendPayment } from '~/lib/ledger'
+import { clearPendingPayUri } from '~/lib/pending-pay-uri'
 import type { SwapDirection } from '~/lib/swap'
 import { approveUsdc, calculateMinAmountOut, getAmountOut, getRouterAddress, readUsdcAllowance, readUsdcBalance, swapExactETHForTokens, swapExactTokensForETH } from '~/lib/swap'
 import { useAccountStore } from '~/stores/account'
@@ -197,6 +198,7 @@ export function useSigningSession() {
       clearActivity(addr)
     }
     clearStoredCredentialId()
+    clearPendingPayUri()
     lock()
   }
 

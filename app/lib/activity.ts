@@ -13,11 +13,18 @@ function storageKey(address: `0x${string}`): string {
   return `flowpay.activity.${address.toLowerCase()}`
 }
 
-export function readActivity(address: `0x${string}`): ActivityPayment[] {
+function defaultStorage(): Storage | undefined {
   if (!import.meta.client)
+    return undefined
+  return window.localStorage
+}
+
+export function readActivity(address: `0x${string}`, storage?: Storage): ActivityPayment[] {
+  const s = storage ?? defaultStorage()
+  if (!s)
     return []
   try {
-    const raw = window.localStorage.getItem(storageKey(address))
+    const raw = s.getItem(storageKey(address))
     if (!raw)
       return []
     const parsed = JSON.parse(raw) as ActivityPayment[]
@@ -33,6 +40,7 @@ export function readActivity(address: `0x${string}`): ActivityPayment[] {
 export function recordPayment(
   address: `0x${string}`,
   entry: Omit<ActivityPayment, 'at'> & { at?: number },
+  storage?: Storage,
 ): ActivityPayment[] {
   const next: ActivityPayment = {
     hash: entry.hash,
@@ -40,16 +48,15 @@ export function recordPayment(
     valueWei: entry.valueWei,
     at: entry.at ?? Date.now(),
   }
-  const list = [next, ...readActivity(address).filter(item => item.hash !== next.hash)].slice(0, MAX_ENTRIES)
-  if (import.meta.client)
-    window.localStorage.setItem(storageKey(address), JSON.stringify(list))
+  const list = [next, ...readActivity(address, storage).filter(item => item.hash !== next.hash)].slice(0, MAX_ENTRIES)
+  const s = storage ?? defaultStorage()
+  s?.setItem(storageKey(address), JSON.stringify(list))
   return list
 }
 
-export function clearActivity(address: `0x${string}`): void {
-  if (!import.meta.client)
-    return
-  window.localStorage.removeItem(storageKey(address))
+export function clearActivity(address: `0x${string}`, storage?: Storage): void {
+  const s = storage ?? defaultStorage()
+  s?.removeItem(storageKey(address))
 }
 
 export function shortTxHash(hash: string): string {

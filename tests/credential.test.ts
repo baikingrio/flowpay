@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { clearStoredCredentialId, readStoredCredentialId, writeStoredCredentialId } from '../app/lib/credential'
 
 const store = new Map<string, string>()
 
-function mockLocalStorage(): Storage {
+function storeAsStorage(): Storage {
   return {
     get length() { return store.size },
     clear: () => store.clear(),
@@ -19,32 +20,36 @@ describe('credential storage', () => {
   })
 
   it('reads undefined when no credential is stored', () => {
-    const storage = mockLocalStorage()
-    const key = 'flowpay.credentialId'
-    expect(storage.getItem(key)).toBeNull()
+    expect(readStoredCredentialId(storeAsStorage())).toBeUndefined()
   })
 
   it('roundtrips credential id', () => {
-    const storage = mockLocalStorage()
-    const key = 'flowpay.credentialId'
+    const storage = storeAsStorage()
     const credentialId = 'test-credential-id-123'
 
-    storage.setItem(key, credentialId)
-    expect(storage.getItem(key)).toBe(credentialId)
+    writeStoredCredentialId(credentialId, storage)
+    expect(readStoredCredentialId(storage)).toBe(credentialId)
 
-    storage.removeItem(key)
-    expect(storage.getItem(key)).toBeNull()
+    clearStoredCredentialId(storage)
+    expect(readStoredCredentialId(storage)).toBeUndefined()
   })
 
-  it('clears credential id on sign out', () => {
-    const storage = mockLocalStorage()
-    const key = 'flowpay.credentialId'
+  it('clears credential id', () => {
+    const storage = storeAsStorage()
     const credentialId = 'test-credential-id-456'
 
-    storage.setItem(key, credentialId)
-    expect(storage.getItem(key)).toBe(credentialId)
+    writeStoredCredentialId(credentialId, storage)
+    expect(readStoredCredentialId(storage)).toBe(credentialId)
 
-    storage.removeItem(key)
-    expect(storage.getItem(key)).toBeNull()
+    clearStoredCredentialId(storage)
+    expect(readStoredCredentialId(storage)).toBeUndefined()
+    expect(store.get('flowpay.credentialId')).toBeUndefined()
+  })
+
+  it('stores under correct key', () => {
+    const storage = storeAsStorage()
+    const credentialId = 'test-credential-789'
+    writeStoredCredentialId(credentialId, storage)
+    expect(store.get('flowpay.credentialId')).toBe(credentialId)
   })
 })

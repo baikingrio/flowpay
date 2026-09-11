@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { clearActivity, readActivity, recordPayment } from '../app/lib/activity'
 
 const store = new Map<string, string>()
 
-function mockLocalStorage(): Storage {
+function storeAsStorage(): Storage {
   return {
     get length() { return store.size },
     clear: () => store.clear(),
@@ -22,62 +23,102 @@ describe('activity storage', () => {
   })
 
   it('reads empty array when no activity is stored', () => {
-    const storage = mockLocalStorage()
-    expect(storage.getItem(storageKey)).toBeNull()
+    const activity = readActivity(testAddress, storeAsStorage())
+    expect(activity).toEqual([])
   })
 
-  it('stores and retrieves activity', () => {
-    const storage = mockLocalStorage()
-    const activity = [
-      {
-        hash: '0xabc123' as `0x${string}`,
-        to: '0x9876543210fedcba9876543210fedcba98765432' as `0x${string}`,
-        valueWei: '1000000000000000000',
-        at: Date.now(),
-      },
-    ]
+  it('records and retrieves activity', () => {
+    const storage = storeAsStorage()
+    const payment = {
+      hash: '0xabc123' as `0x${string}`,
+      to: '0x9876543210fedcba9876543210fedcba98765432' as `0x${string}`,
+      valueWei: '1000000000000000000',
+    }
 
-    storage.setItem(storageKey, JSON.stringify(activity))
-    const retrieved = JSON.parse(storage.getItem(storageKey)!)
-    expect(retrieved).toEqual(activity)
+    const result = recordPayment(testAddress, payment, storage)
+    expect(result.length).toBe(1)
+    expect(result[0].hash).toBe(payment.hash)
+    expect(result[0].to).toBe(payment.to)
+    expect(result[0].valueWei).toBe(payment.valueWei)
+
+    const retrieved = readActivity(testAddress, storage)
+    expect(retrieved).toEqual(result)
   })
 
-  it('clears activity on sign out', () => {
-    const storage = mockLocalStorage()
-    const activity = [
-      {
-        hash: '0xdef456' as `0x${string}`,
-        to: '0x1111222233334444555566667777888899990000' as `0x${string}`,
-        valueWei: '2000000000000000000',
-        at: Date.now(),
-      },
-    ]
+  it('clears activity', () => {
+    const storage = storeAsStorage()
+    const payment = {
+      hash: '0xdef456' as `0x${string}`,
+      to: '0x1111222233334444555566667777888899990000' as `0x${string}`,
+      valueWei: '2000000000000000000',
+    }
 
-    storage.setItem(storageKey, JSON.stringify(activity))
-    expect(storage.getItem(storageKey)).not.toBeNull()
+    recordPayment(testAddress, payment, storage)
+    expect(readActivity(testAddress, storage).length).toBe(1)
 
-    storage.removeItem(storageKey)
-    expect(storage.getItem(storageKey)).toBeNull()
+    clearActivity(testAddress, storage)
+    expect(readActivity(testAddress, storage)).toEqual([])
+    expect(store.get(storageKey)).toBeUndefined()
   })
 
   it('activity is address-specific', () => {
-    const storage = mockLocalStorage()
+    const storage = storeAsStorage()
     const address1 = '0x1111111111111111111111111111111111111111' as `0x${string}`
     const address2 = '0x2222222222222222222222222222222222222222' as `0x${string}`
-    const key1 = `flowpay.activity.${address1.toLowerCase()}`
-    const key2 = `flowpay.activity.${address2.toLowerCase()}`
 
-    const activity1 = [{ hash: '0xa1' as `0x${string}`, to: address2, valueWei: '1', at: 1 }]
-    const activity2 = [{ hash: '0xa2' as `0x${string}`, to: address1, valueWei: '2', at: 2 }]
+    const payment1 = {
+      hash: '0xa1' as `0x${string}`,
+      to: address2,
+      valueWei: '1',
+    }
+    const payment2 = {
+      hash: '0xa2' as `0x${string}`,
+      to: address1,
+      valueWei: '2',
+    }
 
-    storage.setItem(key1, JSON.stringify(activity1))
-    storage.setItem(key2, JSON.stringify(activity2))
+    recordPayment(address1, payment1, storage)
+    recordPayment(address2, payment2, storage)
 
-    expect(JSON.parse(storage.getItem(key1)!)).toEqual(activity1)
-    expect(JSON.parse(storage.getItem(key2)!)).toEqual(activity2)
+    const activity1 = readActivity(address1, storage)
+    const activity2 = readActivity(address2, storage)
 
-    storage.removeItem(key1)
-    expect(storage.getItem(key1)).toBeNull()
-    expect(JSON.parse(storage.getItem(key2)!)).toEqual(activity2)
+    expect(activity1.length).toBe(1)
+    expect(activity1[0].hash).toBe(payment1.hash)
+    expect(activity2.length).toBe(1)
+    expect(activity2[0].hash).toBe(payment2.hash)
+
+    clearActivity(address1, storage)
+    expect(readActivity(address1, storage)).toEqual([])
+    expect(readActivity(address2, storage).length).toBe(1)
+  })
+
+  it('deduplicates by hash', () => {
+    const storage = storeAsStorage()
+    const payment = {
+      hash: '0xsame' as `0x${string}`,
+      to: '0x1111111111111111111111111111111111111111' as `0x${string}`,
+      valueWei: '100',
+    }
+
+    recordPayment(testAddress, payment, storage)
+    recordPayment(testAddress, payment, storage)
+
+    const activity = readActivity(testAddress, storage)
+    expect(activity.length).toBe(1)
+  })
+
+  it('caps at MAX_ENTRIES', () => {
+    const storage = storeAsStorage()
+    for (let i = 0; i < 25; i++) {
+      recordPayment(testAddress, {
+        hash: `0x${i.toString(16).padStart(6, '0')}` as `0x${string}`,
+        to: '0x1111111111111111111111111111111111111111' as `0x${string}`,
+        valueWei: i.toString(),
+      }, storage)
+    }
+
+    const activity = readActivity(testAddress, storage)
+    expect(activity.length).toBe(20)
   })
 })

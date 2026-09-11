@@ -1,20 +1,23 @@
 const STORAGE_KEY = 'flowpay.credentialId'
 
-export function readStoredCredentialId(): string | undefined {
+function defaultStorage(): Storage | undefined {
   if (!import.meta.client)
     return undefined
-  const value = window.localStorage.getItem(STORAGE_KEY)
+  return window.localStorage
+}
+
+export function readStoredCredentialId(storage?: Storage): string | undefined {
+  const s = storage ?? defaultStorage()
+  const value = s?.getItem(STORAGE_KEY)
   return value || undefined
 }
 
-export function writeStoredCredentialId(credentialId: string): void {
-  if (!import.meta.client)
-    return
-  window.localStorage.setItem(STORAGE_KEY, credentialId)
+export function writeStoredCredentialId(credentialId: string, storage?: Storage): void {
+  const s = storage ?? defaultStorage()
+  s?.setItem(STORAGE_KEY, credentialId)
 }
 
-export function clearStoredCredentialId(): void {
-  if (!import.meta.client)
-    return
-  window.localStorage.removeItem(STORAGE_KEY)
+export function clearStoredCredentialId(storage?: Storage): void {
+  const s = storage ?? defaultStorage()
+  s?.removeItem(STORAGE_KEY)
 }
