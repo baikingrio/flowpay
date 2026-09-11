@@ -124,6 +124,10 @@ export default defineI18nConfig(() => ({
       checkoutTimeout: '等待超时（5 分钟）',
       checkoutAgain: '再收一笔',
       cancel: '取消',
+      todayLedger: '今日流水',
+      todayLedgerSummary: '{count} 笔 · 合计 {total} USDC',
+      todayLedgerEmpty: '今天还没有收款记录',
+      todayLedgerFootnote: '仅显示由本台设备收银台确认的收款；不包含全部链上转账；清除本机数据将移除此记录。',
     },
     en: {
       tagline: 'Self-custodied payments that feel like a normal app — one Face ID / Touch ID, no seed phrase.',
@@ -246,6 +250,10 @@ export default defineI18nConfig(() => ({
       checkoutTimeout: 'Timeout (5 minutes)',
       checkoutAgain: 'Receive another',
       cancel: 'Cancel',
+      todayLedger: 'Today',
+      todayLedgerSummary: '{count} transaction(s) · Total {total} USDC',
+      todayLedgerEmpty: 'No receipts today',
+      todayLedgerFootnote: 'Shows only receipts confirmed by this device\'s checkout; not a full chain ledger; clearing local data removes this.',
     },
   },
 }))
