@@ -1,0 +1,2 @@
+export const USDC_ADDRESS = '0x534b2f3A21130d7a60830c2Df862319e593943A3' as const
+export const USDC_DECIMALS = 6

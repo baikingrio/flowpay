@@ -7,7 +7,8 @@ import { readBalance, sendPayment } from '~/lib/ledger'
 import { clearPendingPayUri } from '~/lib/pending-pay-uri'
 import { shouldSetSessionExpired } from '~/lib/session-expiry'
 import type { SwapDirection } from '~/lib/swap'
-import { approveUsdc, calculateMinAmountOut, getAmountOut, getRouterAddress, readUsdcAllowance, readUsdcBalance, swapExactETHForTokens, swapExactTokensForETH } from '~/lib/swap'
+import { approveUsdc, calculateMinAmountOut, getAmountOut, getRouterAddress, readUsdcAllowance, swapExactETHForTokens, swapExactTokensForETH } from '~/lib/swap'
+import { readUsdcBalance, sendUsdcTransfer } from '~/lib/usdc'
 import { useAccountStore } from '~/stores/account'
 
 const SESSION_MS = 10 * 60 * 1000
@@ -176,6 +177,30 @@ export function useSigningSession() {
     }
   }
 
+  async function sendUsdc(to: `0x${string}`, amountBase: bigint): Promise<void> {
+    if (session === undefined || account.address === undefined || amountBase <= 0n)
+      return
+    const usdcBalance = await readUsdcBalance(account.address)
+    if (usdcBalance < amountBase) {
+      account.status = 'error'
+      account.errorMessage = 'insufficientUsdc'
+      return
+    }
+    account.status = 'sending'
+    account.errorMessage = undefined
+    try {
+      const hash = await sendUsdcTransfer(session, to, amountBase)
+      account.lastTxHash = hash
+      await refreshBalance()
+      account.status = 'ready'
+    }
+    catch {
+      account.status = 'error'
+      account.errorMessage = 'sendFailed'
+      account.hasSession = session !== undefined
+    }
+  }
+
   async function getUsdcBalance(): Promise<bigint> {
     if (account.address === undefined)
       return 0n
@@ -207,5 +232,5 @@ export function useSigningSession() {
     lock()
   }
 
-  return { open, end: endSession, lock, signOut, refreshBalance, send, swap, getUsdcBalance, getSwapQuote }
+  return { open, end: endSession, lock, signOut, refreshBalance, send, sendUsdc, swap, getUsdcBalance, getSwapQuote }
 }
