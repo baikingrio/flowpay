@@ -12,7 +12,7 @@ import { encodeQrDataUrl } from '~/lib/qr-encode'
 import { blockRanges } from '~/lib/block-ranges'
 import { readCheckoutLedger, recordCheckoutReceipt, summarizeToday } from '~/lib/checkout-ledger'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const account = useAccountStore()
 const { open } = useSigningSession()
 
@@ -30,6 +30,7 @@ const qrDataUri = ref('')
 const matchedTxHash = ref<`0x${string}` | undefined>()
 const pollTimer = ref<ReturnType<typeof setInterval> | undefined>()
 const startBlockNumber = ref<bigint | undefined>()
+const ledgerTick = ref(0)
 
 const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'] as const
 
@@ -53,6 +54,7 @@ const explorerHref = computed(() =>
 )
 
 const todaySummary = computed(() => {
+  ledgerTick.value
   if (!account.address)
     return { count: 0, totalBase: 0n, items: [] }
   const entries = readCheckoutLedger(account.address)
@@ -207,6 +209,7 @@ async function checkForMatch() {
           amountBase: intent.amountBase,
           to: intent.expectedTo,
         })
+        ledgerTick.value++
       }
       state.value = 'success'
       stopPolling()
@@ -250,6 +253,7 @@ onMounted(async () => {
     state.value = 'pending'
     startPolling()
   }
+  ledgerTick.value++
 })
 
 onBeforeUnmount(() => {
@@ -303,7 +307,7 @@ onBeforeUnmount(() => {
             :key="item.hash"
             class="flex items-center justify-between text-[14px] leading-[1.43]"
           >
-            <span class="text-[#737373]">{{ new Date(item.receivedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) }}</span>
+            <span class="text-[#737373]">{{ new Date(item.receivedAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }}</span>
             <span class="font-medium tabular-nums">{{ formatUsdcFromBase(item.amountBase) }} USDC</span>
             <NuxtLink
               :to="`https://testnet.monadexplorer.com/tx/${item.hash}`"
