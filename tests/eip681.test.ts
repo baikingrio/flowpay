@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { buildPaymentUri, parsePaymentUri, toAppPayPath } from '../app/lib/eip681'
+import { buildErc20TransferUri, buildPaymentUri, parsePaymentUri, toAppPayPath } from '../app/lib/eip681'
+import { USDC_ADDRESS } from '../app/lib/tokens'
 
 const ADDR = '0x000000000000000000000000000000000000dEaD' as const
 // checksummed form of dEaD:
 const DEAD = '0x000000000000000000000000000000000000dEaD'
+const RECV = '0x000000000000000000000000000000000000dEaD' as const
 
 describe('buildPaymentUri', () => {
   it('builds address@10143', () => {
@@ -47,9 +49,14 @@ describe('parsePaymentUri', () => {
     expect(r).toEqual({ ok: false, error: 'wrong_chain' })
   })
 
-  it('rejects function path', () => {
+  it('accepts transfer function path', () => {
     const r = parsePaymentUri(`ethereum:${DEAD}@10143/transfer?address=${DEAD}&uint256=1`, 10143)
-    expect(r).toEqual({ ok: false, error: 'unsupported_function' })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.tokenAddress?.toLowerCase()).toBe(DEAD.toLowerCase())
+      expect(r.address?.toLowerCase()).toBe(DEAD.toLowerCase())
+      expect(r.tokenAmount).toBe(1n)
+    }
   })
 
   it('rejects a mixed-case address with an invalid checksum', () => {
@@ -77,5 +84,40 @@ describe('toAppPayPath', () => {
   it('builds query path', () => {
     const uri = `ethereum:${DEAD}@10143`
     expect(toAppPayPath(uri)).toBe(`/pay?uri=${encodeURIComponent(uri)}`)
+  })
+})
+
+describe('ERC-20 transfer URI', () => {
+  it('builds transfer uri', () => {
+    const uri = buildErc20TransferUri({
+      token: USDC_ADDRESS,
+      to: RECV,
+      amount: 12_500_000n,
+      chainId: 10143,
+    })
+    expect(uri.startsWith(`ethereum:${USDC_ADDRESS}@10143/transfer?`)).toBe(true)
+    expect(uri).toContain('uint256=12500000')
+  })
+
+  it('parses transfer uri', () => {
+    const uri = buildErc20TransferUri({
+      token: USDC_ADDRESS,
+      to: RECV,
+      amount: 12_500_000n,
+      chainId: 10143,
+    })
+    const r = parsePaymentUri(uri, 10143)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.tokenAddress?.toLowerCase()).toBe(USDC_ADDRESS.toLowerCase())
+      expect(r.address?.toLowerCase()).toBe(RECV.toLowerCase())
+      expect(r.tokenAmount).toBe(12_500_000n)
+      expect(r.valueWei).toBeUndefined()
+    }
+  })
+
+  it('still rejects unknown functions', () => {
+    const r = parsePaymentUri(`ethereum:${USDC_ADDRESS}@10143/approve?address=${RECV}&uint256=1`, 10143)
+    expect(r).toEqual({ ok: false, error: 'unsupported_function' })
   })
 })

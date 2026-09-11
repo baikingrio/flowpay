@@ -6,6 +6,8 @@ export type ParsePaymentUriSuccess = {
   ensName?: string
   chainId?: number
   valueWei?: bigint
+  tokenAddress?: `0x${string}`
+  tokenAmount?: bigint
   warnings: string[]
 }
 
@@ -27,6 +29,18 @@ export function buildPaymentUri(opts: {
   if (opts.valueWei !== undefined)
     uri += `?value=${formatScientificWei(opts.valueWei)}`
   return uri
+}
+
+export function buildErc20TransferUri(opts: {
+  token: `0x${string}`
+  to: `0x${string}`
+  amount: bigint
+  chainId?: number
+}): string {
+  const chainId = opts.chainId ?? 10143
+  const token = getAddress(opts.token)
+  const to = getAddress(opts.to)
+  return `ethereum:${token}@${chainId}/transfer?address=${to}&uint256=${opts.amount}`
 }
 
 export function toAppPayPath(uri: string): string {
@@ -53,15 +67,23 @@ export function parsePaymentUri(
   const pathPart = qIndex === -1 ? rest : rest.slice(0, qIndex)
   const query = qIndex === -1 ? '' : rest.slice(qIndex + 1)
 
-  if (pathPart.includes('/'))
-    return { ok: false, error: 'unsupported_function' }
-
+  const slashIndex = pathPart.indexOf('/')
   let target = pathPart
+  let functionPath: string | undefined
+
+  if (slashIndex !== -1) {
+    target = pathPart.slice(0, slashIndex)
+    functionPath = pathPart.slice(slashIndex + 1)
+    if (functionPath !== 'transfer')
+      return { ok: false, error: 'unsupported_function' }
+  }
+
   let chainId: number | undefined
-  const at = pathPart.lastIndexOf('@')
+  const at = target.lastIndexOf('@')
   if (at !== -1) {
-    target = pathPart.slice(0, at)
-    const id = Number(pathPart.slice(at + 1))
+    const afterAt = target.slice(at + 1)
+    target = target.slice(0, at)
+    const id = Number(afterAt)
     if (!Number.isInteger(id) || id <= 0)
       return { ok: false, error: 'invalid' }
     chainId = id
@@ -79,13 +101,32 @@ export function parsePaymentUri(
 
   if (query) {
     const params = new URLSearchParams(query)
-    const value = params.get('value')
-    if (value) {
-      try {
-        base.valueWei = parseWeiNumber(value)
+
+    if (functionPath === 'transfer') {
+      base.tokenAddress = base.address
+      base.address = undefined
+      const addressParam = params.get('address')
+      const uint256Param = params.get('uint256')
+      if (addressParam && /^0x[0-9a-fA-F]{40}$/.test(addressParam))
+        base.address = getAddress(addressParam)
+      if (uint256Param) {
+        try {
+          base.tokenAmount = BigInt(uint256Param)
+        }
+        catch {
+          base.warnings.push('bad_value')
+        }
       }
-      catch {
-        base.warnings.push('bad_value')
+    }
+    else {
+      const value = params.get('value')
+      if (value) {
+        try {
+          base.valueWei = parseWeiNumber(value)
+        }
+        catch {
+          base.warnings.push('bad_value')
+        }
       }
     }
   }
