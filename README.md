@@ -8,6 +8,21 @@
 
 ---
 
+## 开发
+
+需要 Node.js 22+（推荐偶数主版本 22 / 24）和 pnpm。
+
+```bash
+pnpm install
+pnpm dev
+```
+
+打开 [http://localhost:3000](http://localhost:3000)。
+
+其它命令：`pnpm typecheck`、`pnpm lint`、`pnpm build`。
+
+---
+
 ## 文档
 
 所有详细文档位于 [`docs/`](./docs/) 目录：
@@ -34,4 +49,4 @@
 
 ## 状态
 
-文档阶段完成，项目名称已确定为 **Flowpay**，准备进入技术选型与开发。
+Nuxt 4 应用已初始化，可进入账户层（Mera）与页面开发。
