@@ -9,6 +9,7 @@ import { shouldSetSessionExpired } from '~/lib/session-expiry'
 import type { SwapDirection } from '~/lib/swap'
 import { approveUsdc, calculateMinAmountOut, getAmountOut, getRouterAddress, readUsdcAllowance, swapExactETHForTokens, swapExactTokensForETH } from '~/lib/swap'
 import { readUsdcBalance, sendUsdcTransfer } from '~/lib/usdc'
+import { clearCheckoutLedger } from '~/lib/checkout-ledger'
 import { useAccountStore } from '~/stores/account'
 
 const SESSION_MS = 10 * 60 * 1000
@@ -226,6 +227,7 @@ export function useSigningSession() {
     const addr = account.address
     if (addr !== undefined) {
       clearActivity(addr)
+      clearCheckoutLedger(addr)
     }
     clearStoredCredentialId()
     clearPendingPayUri()

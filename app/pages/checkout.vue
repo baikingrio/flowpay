@@ -10,8 +10,9 @@ import { matchCheckoutTransfer } from '~/lib/checkout-match'
 import { getPublicClient } from '~/lib/ledger'
 import { encodeQrDataUrl } from '~/lib/qr-encode'
 import { blockRanges } from '~/lib/block-ranges'
+import { readCheckoutLedger, recordCheckoutReceipt, summarizeToday } from '~/lib/checkout-ledger'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const account = useAccountStore()
 const { open } = useSigningSession()
 
@@ -29,6 +30,7 @@ const qrDataUri = ref('')
 const matchedTxHash = ref<`0x${string}` | undefined>()
 const pollTimer = ref<ReturnType<typeof setInterval> | undefined>()
 const startBlockNumber = ref<bigint | undefined>()
+const ledgerTick = ref(0)
 
 const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'] as const
 
@@ -50,6 +52,14 @@ const explorerHref = computed(() =>
     ? `https://testnet.monadexplorer.com/tx/${matchedTxHash.value}`
     : undefined,
 )
+
+const todaySummary = computed(() => {
+  ledgerTick.value
+  if (!account.address)
+    return { count: 0, totalBase: 0n, items: [] }
+  const entries = readCheckoutLedger(account.address)
+  return summarizeToday(entries)
+})
 
 function pressKey(key: typeof keys[number]) {
   if (key === 'back') {
@@ -193,6 +203,14 @@ async function checkForMatch() {
     const match = matchCheckoutTransfer(intent, candidates, nowMs)
     if (match) {
       matchedTxHash.value = match.hash
+      if (account.address) {
+        recordCheckoutReceipt(account.address, {
+          hash: match.hash,
+          amountBase: intent.amountBase,
+          to: intent.expectedTo,
+        })
+        ledgerTick.value++
+      }
       state.value = 'success'
       stopPolling()
       clearCheckoutIntent()
@@ -235,6 +253,7 @@ onMounted(async () => {
     state.value = 'pending'
     startPolling()
   }
+  ledgerTick.value++
 })
 
 onBeforeUnmount(() => {
@@ -273,6 +292,46 @@ onBeforeUnmount(() => {
             {{ key }}
           </template>
         </button>
+      </div>
+
+      <div v-if="todaySummary.count > 0" class="mt-8 rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
+        <h2 class="text-[16px] leading-[1.5] font-semibold">
+          {{ t('todayLedger') }}
+        </h2>
+        <p class="mt-1 text-[14px] leading-[1.43] text-[#737373]">
+          {{ t('todayLedgerSummary', { count: todaySummary.count, total: formatUsdcFromBase(todaySummary.totalBase) }) }}
+        </p>
+        <div v-if="todaySummary.items.length > 0" class="mt-4 space-y-2">
+          <div
+            v-for="item in todaySummary.items"
+            :key="item.hash"
+            class="flex items-center justify-between text-[14px] leading-[1.43]"
+          >
+            <span class="text-[#737373]">{{ new Date(item.receivedAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }}</span>
+            <span class="font-medium tabular-nums">{{ formatUsdcFromBase(item.amountBase) }} USDC</span>
+            <NuxtLink
+              :to="`https://testnet.monadexplorer.com/tx/${item.hash}`"
+              external
+              class="text-[#0a0a0a] underline"
+            >
+              ↗
+            </NuxtLink>
+          </div>
+        </div>
+        <p class="mt-4 text-[12px] leading-[1.5] text-[#a3a3a3]">
+          {{ t('todayLedgerFootnote') }}
+        </p>
+      </div>
+      <div v-else class="mt-8 rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
+        <h2 class="text-[16px] leading-[1.5] font-semibold">
+          {{ t('todayLedger') }}
+        </h2>
+        <p class="mt-1 text-[14px] leading-[1.43] text-[#737373]">
+          {{ t('todayLedgerEmpty') }}
+        </p>
+        <p class="mt-4 text-[12px] leading-[1.5] text-[#a3a3a3]">
+          {{ t('todayLedgerFootnote') }}
+        </p>
       </div>
 
       <div class="mt-auto pt-6">
