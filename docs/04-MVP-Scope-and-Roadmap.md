@@ -29,7 +29,7 @@
 - [x] 错误处理与加载状态
 
 ### P1（强烈建议 / 加分）
-- [ ] Gas 赞助（新用户首笔）— **未做**；当前仍用外部水龙头
+- [x] Gas 赞助（新用户首笔）— 通过 Pimlico + Kernel 智能账户实现（ADR 0010）
 - [x] 收款二维码（Home `PayReceivePanel` / EIP-681）
 - [x] 会话状态可视化（剩余时间；TopBar + Settings）
 - [x] 响应式设计（手机壳布局，ADR 0009）

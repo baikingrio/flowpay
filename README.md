@@ -19,6 +19,20 @@ pnpm dev
 
 打开 [http://localhost:3000](http://localhost:3000)。
 
+### Gas 赞助配置（可选）
+
+为了让新用户无需外部水龙头即可完成首次支付，Flowpay 支持通过第三方 paymaster（Pimlico）赞助 gas。
+
+1. 注册 Pimlico 账号：[dashboard.pimlico.io](https://dashboard.pimlico.io)
+2. 创建 API Key（测试网免费）
+3. 复制 `.env.example` 为 `.env`
+4. 填入 API Key：
+   ```bash
+   NUXT_PUBLIC_PIMLICO_API_KEY=your_api_key_here
+   ```
+
+不配置此 Key 时，应用仍可正常运行，用户需通过水龙头获取 MON 后才能发送交易。
+
 其它命令：`pnpm typecheck`、`pnpm lint`、`pnpm build`。
 
 ---

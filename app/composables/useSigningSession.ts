@@ -6,6 +6,7 @@ import { clearStoredCredentialId, readStoredCredentialId, writeStoredCredentialI
 import { readBalance, sendPayment } from '~/lib/ledger'
 import { clearPendingPayUri } from '~/lib/pending-pay-uri'
 import { shouldSetSessionExpired } from '~/lib/session-expiry'
+import { isSponsorshipAvailable, needsSponsorship, sendSponsoredPayment } from '~/lib/sponsored'
 import type { SwapDirection } from '~/lib/swap'
 import { approveUsdc, calculateMinAmountOut, getAmountOut, getRouterAddress, readUsdcAllowance, readUsdcBalance, swapExactETHForTokens, swapExactTokensForETH } from '~/lib/swap'
 import { useAccountStore } from '~/stores/account'
@@ -106,12 +107,36 @@ export function useSigningSession() {
   }
 
   async function send(to: `0x${string}`, value: bigint): Promise<void> {
-    if (session === undefined || account.balanceWei === undefined || value <= 0n || account.balanceWei <= value)
+    if (session === undefined || account.balanceWei === undefined || value <= 0n)
       return
+
+    // Check if we need gas sponsorship
+    const useSponsorship = isSponsorshipAvailable()
+      && needsSponsorship(account.balanceWei, value)
+      && account.balanceWei >= value // Must still have enough for the value itself
+
+    if (!useSponsorship && account.balanceWei <= value) {
+      // Cannot afford value + gas, and sponsorship not available
+      return
+    }
+
     account.status = 'sending'
     account.errorMessage = undefined
+    account.usedSponsorship = false
+
     try {
-      const hash = await sendPayment(session, to, value)
+      let hash: `0x${string}`
+
+      if (useSponsorship) {
+        // Use sponsored transaction via smart account
+        hash = await sendSponsoredPayment(session, to, value)
+        account.usedSponsorship = true
+      }
+      else {
+        // Regular EOA transaction
+        hash = await sendPayment(session, to, value)
+      }
+
       account.lastTxHash = hash
       if (account.address !== undefined) {
         account.activity = recordPayment(account.address, {
@@ -123,9 +148,10 @@ export function useSigningSession() {
       await refreshBalance()
       account.status = 'ready'
     }
-    catch {
+    catch (error) {
       account.status = 'error'
-      account.errorMessage = 'sendFailed'
+      // If sponsorship failed, suggest faucet as fallback
+      account.errorMessage = useSponsorship ? 'sponsorshipFailed' : 'sendFailed'
       account.hasSession = session !== undefined
     }
   }
