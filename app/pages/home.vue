@@ -52,6 +52,12 @@ async function copyAddress() {
       >
         {{ showReceive ? t('hideReceive') : t('receive') }}
       </Button>
+      <NuxtLink
+        class="flex h-10 items-center justify-center rounded-[18px] bg-[#0a0a0a] text-[14px] font-medium text-[#fafafa] hover:bg-[#0a0a0a]/90"
+        to="/checkout"
+      >
+        {{ t('navCheckout') }}
+      </NuxtLink>
       <Button variant="outline" class="w-full border-[#e5e5e5] bg-white shadow-none" @click="copyAddress">
         {{ copied ? t('copied') : t('copy') }}
       </Button>
