@@ -8,11 +8,14 @@ import { resolveEnsName } from '~/lib/ens'
 import { shortAddress } from '~/lib/format'
 import { formatMon } from '~/lib/ledger'
 import { clearPendingPayUri, readPendingPayUri } from '~/lib/pending-pay-uri'
+import { formatUsdcFromBase, parseUsdcToBase } from '~/lib/usdc-amount'
 
 const { t } = useI18n()
 const route = useRoute()
 const account = useAccountStore()
-const { open, send } = useSigningSession()
+const { open, send, sendUsdc, getUsdcBalance } = useSigningSession()
+
+type Asset = 'mon' | 'usdc'
 
 definePageMeta({
   layout: 'shell',
@@ -20,6 +23,8 @@ definePageMeta({
 
 const recipient = ref<string>(FIRST_PAYMENT_TO)
 const amountText = ref(formatMon(FIRST_PAYMENT_VALUE))
+const asset = ref<Asset>('mon')
+const usdcBalance = ref<bigint>(0n)
 const localError = ref<string | undefined>()
 const localWarning = ref<string | undefined>()
 const externalPrefill = ref(false)
@@ -27,13 +32,14 @@ const toField = ref<HTMLInputElement | null>(null)
 
 const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'] as const
 
-const parsedAmount = computed(() => parseAmountText(amountText.value))
+const parsedAmount = computed(() => parseAmountText(amountText.value, asset.value))
 const parsedRecipient = computed(() => {
   const value = recipient.value.trim()
   if (!isAddress(value))
     return undefined
   return value as Address
 })
+const assetLabel = computed(() => asset.value === 'usdc' ? 'USDC' : 'MON')
 const recentRecipients = computed(() => {
   const seen = new Set<string>()
   return account.activity
@@ -52,30 +58,41 @@ const explorerHref = computed(() =>
     ? `https://testnet.monadexplorer.com/tx/${account.lastTxHash}`
     : undefined,
 )
-const insufficient = computed(() =>
-  parsedAmount.value !== undefined
-  && account.balanceWei !== undefined
-  && account.balanceWei <= parsedAmount.value,
+const insufficient = computed(() => {
+  if (parsedAmount.value === undefined)
+    return false
+  if (asset.value === 'usdc')
+    return usdcBalance.value < parsedAmount.value
+  return account.balanceWei !== undefined && account.balanceWei <= parsedAmount.value
+})
+const insufficientGas = computed(() =>
+  asset.value === 'usdc' && account.balanceWei !== undefined && account.balanceWei === 0n,
 )
-const canPay = computed(() =>
-  account.hasSession
-  && parsedRecipient.value !== undefined
-  && parsedAmount.value !== undefined
-  && account.balanceWei !== undefined
-  && account.balanceWei > parsedAmount.value,
-)
+const canPay = computed(() => {
+  if (!account.hasSession || parsedRecipient.value === undefined || parsedAmount.value === undefined)
+    return false
+  if (asset.value === 'usdc')
+    return usdcBalance.value >= parsedAmount.value && account.balanceWei !== undefined && account.balanceWei > 0n
+  return account.balanceWei !== undefined && account.balanceWei > parsedAmount.value
+})
 
 const isFirstPayment = computed(() =>
   isFirstPaymentDefaults(recipient.value, parsedAmount.value),
 )
 
-function parseAmountText(raw: string): bigint | undefined {
+function parseAmountText(raw: string, assetType: Asset): bigint | undefined {
   const cleaned = raw.endsWith('.') ? raw.slice(0, -1) : raw
   if (!cleaned || cleaned === '.')
     return undefined
   try {
-    const value = parseEther(cleaned)
-    return value > 0n ? value : undefined
+    if (assetType === 'usdc') {
+      const value = parseUsdcToBase(cleaned)
+      return value > 0n ? value : undefined
+    }
+    else {
+      const value = parseEther(cleaned)
+      return value > 0n ? value : undefined
+    }
   }
   catch {
     return undefined
@@ -129,8 +146,16 @@ async function applyPaymentInput(raw: string): Promise<void> {
 
   recipient.value = address
   externalPrefill.value = true
-  if (parsed.valueWei !== undefined)
+
+  if (parsed.tokenAddress && parsed.tokenAmount !== undefined) {
+    asset.value = 'usdc'
+    amountText.value = formatUsdcFromBase(parsed.tokenAmount)
+  }
+  else if (parsed.valueWei !== undefined) {
+    asset.value = 'mon'
     amountText.value = formatMon(parsed.valueWei)
+  }
+
   for (const warning of parsed.warnings) {
     if (warning === 'missing_chain')
       localWarning.value = 'missingChain'
@@ -181,11 +206,18 @@ async function onSend() {
     localError.value = 'invalidAmount'
     return
   }
-  if (insufficient.value) {
-    localError.value = 'insufficient'
+  if (insufficientGas.value) {
+    localError.value = 'insufficientGas'
     return
   }
-  await send(parsedRecipient.value, parsedAmount.value)
+  if (insufficient.value) {
+    localError.value = asset.value === 'usdc' ? 'insufficientUsdc' : 'insufficient'
+    return
+  }
+  if (asset.value === 'usdc')
+    await sendUsdc(parsedRecipient.value, parsedAmount.value)
+  else
+    await send(parsedRecipient.value, parsedAmount.value)
 }
 
 function onWindowKey(event: KeyboardEvent) {
@@ -224,9 +256,18 @@ onMounted(async () => {
     if (fromQuery)
       await navigateTo({ path: '/pay', query: {} }, { replace: true })
   }
+  if (account.hasSession)
+    usdcBalance.value = await getUsdcBalance()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onWindowKey)
+})
+
+watch(() => account.hasSession, async (hasSession) => {
+  if (hasSession)
+    usdcBalance.value = await getUsdcBalance()
+  else
+    usdcBalance.value = 0n
 })
 </script>
 
@@ -277,7 +318,7 @@ onBeforeUnmount(() => {
         <span :class="amountText ? 'text-[#0a0a0a]' : 'text-[#737373]'">
           {{ amountText || '0' }}
         </span>
-        <span class="ml-2 text-[18px] font-medium tracking-normal text-[#737373]">MON</span>
+        <span class="ml-2 text-[18px] font-medium tracking-normal text-[#737373]">{{ assetLabel }}</span>
       </p>
 
       <div class="mt-8 grid grid-cols-3 gap-2 rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
@@ -310,8 +351,11 @@ onBeforeUnmount(() => {
       <p v-if="isFirstPayment && !externalPrefill" class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
         {{ t('firstPaymentHint') }}
       </p>
+      <p v-else-if="insufficientGas" class="mt-4 text-[14px] leading-[1.43] text-[#e7000b]">
+        {{ t('insufficientGas') }}
+      </p>
       <p v-else-if="insufficient" class="mt-4 text-[14px] leading-[1.43] text-[#e7000b]">
-        {{ t('insufficient') }}
+        {{ t(asset === 'usdc' ? 'insufficientUsdc' : 'insufficient') }}
       </p>
       <p v-if="account.lastTxHash && explorerHref" class="mt-4 text-[14px] leading-[1.43]">
         {{ t('sent') }}
