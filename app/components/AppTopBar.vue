@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { Settings } from '@lucide/vue'
-import { readAppAuth } from '~/lib/app-auth'
+import { readAppAuth, type AppAuthSession } from '~/lib/app-auth'
 
 const { t } = useI18n()
 const account = useAccountStore()
 
-const appAuth = ref(readAppAuth())
+const appAuth = ref<AppAuthSession | undefined>()
 
 onMounted(() => {
   appAuth.value = readAppAuth()

@@ -12,7 +12,7 @@ const router = useRouter()
 const now = ref(Date.now())
 const showClearConfirm = ref(false)
 const copiedAddress = ref(false)
-const appAuth = ref(readAppAuth())
+const appAuth = ref<ReturnType<typeof readAppAuth>>()
 
 definePageMeta({
   layout: 'shell',

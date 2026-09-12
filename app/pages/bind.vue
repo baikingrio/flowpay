@@ -12,25 +12,26 @@ definePageMeta({
   layout: false,
 })
 
-const appAuth = ref(readAppAuth())
+const appAuth = ref<ReturnType<typeof readAppAuth>>()
+const ready = ref(false)
 const status = ref<'idle' | 'opening' | 'error'>('idle')
 const errorMessage = ref<string>()
 
 async function handleBind() {
   if (!appAuth.value)
     return
-  
+
   status.value = 'opening'
   errorMessage.value = undefined
-  
+
   const ok = await open()
-  
+
   if (!ok) {
     status.value = 'error'
     errorMessage.value = account.errorMessage
     return
   }
-  
+
   if (account.address) {
     writeBoundAddress(account.address)
     status.value = 'idle'
@@ -43,9 +44,10 @@ async function handleBind() {
 }
 
 onMounted(() => {
-  if (!appAuth.value) {
+  appAuth.value = readAppAuth()
+  ready.value = true
+  if (!appAuth.value)
     void router.replace('/')
-  }
 })
 </script>
 
@@ -53,7 +55,7 @@ onMounted(() => {
   <main class="bind-page flex min-h-dvh flex-col items-center justify-center bg-[#f5f5f5] px-6 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
     <div class="w-full max-w-[min(100%,380px)]">
       <div class="rounded-[24px] border border-[#e5e5e5] bg-white p-6 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
-        <div v-if="appAuth" class="flex flex-col items-center text-center">
+        <div v-if="ready && appAuth" class="flex flex-col items-center text-center">
           <div v-if="appAuth.avatarUrl" class="size-16 overflow-hidden rounded-full border border-[#e5e5e5] bg-[#fafafa]">
             <img
               :src="appAuth.avatarUrl"

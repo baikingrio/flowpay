@@ -3,13 +3,15 @@ import { readBoundAddress } from '~/lib/bound-address'
 import { stashPendingPayUri } from '~/lib/pending-pay-uri'
 
 export default defineNuxtRouteMiddleware((to) => {
-  const account = useAccountStore()
+  // App auth lives in localStorage — skip on SSR to avoid hydrate/redirect fights.
+  if (import.meta.server)
+    return
+
   const appAuth = readAppAuth()
   const boundAddress = readBoundAddress()
   const appRoutes = new Set(['/home', '/pay', '/swap', '/checkout'])
   const uri = typeof to.query.uri === 'string' ? to.query.uri : undefined
 
-  // No auth → force landing (except public assets)
   if (!appAuth && to.path !== '/' && !to.path.startsWith('/_nuxt')) {
     return navigateTo({
       path: '/',
@@ -17,7 +19,6 @@ export default defineNuxtRouteMiddleware((to) => {
     })
   }
 
-  // Auth but no bound address → force /bind
   if (appAuth && !boundAddress && to.path !== '/bind' && to.path !== '/' && !to.path.startsWith('/_nuxt')) {
     return navigateTo({
       path: '/bind',
@@ -25,7 +26,6 @@ export default defineNuxtRouteMiddleware((to) => {
     })
   }
 
-  // If on landing and has auth + bound, redirect to home
   if (to.path === '/' && appAuth && boundAddress) {
     return navigateTo({
       path: '/home',
@@ -33,7 +33,6 @@ export default defineNuxtRouteMiddleware((to) => {
     })
   }
 
-  // If on landing and has auth but no bound, go to bind
   if (to.path === '/' && appAuth && !boundAddress) {
     return navigateTo({
       path: '/bind',
@@ -41,7 +40,6 @@ export default defineNuxtRouteMiddleware((to) => {
     })
   }
 
-  // App routes: allow if auth+bound (even without active session)
   if (appRoutes.has(to.path)) {
     if (!appAuth || !boundAddress) {
       if (uri)
@@ -51,7 +49,5 @@ export default defineNuxtRouteMiddleware((to) => {
         query: uri ? { uri } : {},
       })
     }
-    // auth+bound present: allow access (browsing without session is OK)
-    // If they need signing, Continue button will prompt open()
   }
 })
