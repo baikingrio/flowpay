@@ -24,3 +24,7 @@ logs
 .env
 .env.*
 !.env.example
+
+# macOS AppleDouble / metadata
+._*
+.DS_Store
