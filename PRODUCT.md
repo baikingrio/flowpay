@@ -41,6 +41,7 @@ Flowpay 提供 SMB 当面收款场景的链上 USDC 结账体验：商家键入�
 **Confirmed (MVP / P0)**
 
 - Mera 完成账户创建与恢复；一次 Passkey 仪式；Signing Session 创建 / 使用 / 过期。
+- **Mock GitHub 登录**：应用入口使用模拟的 GitHub 身份验证作为产品访问门槛，强制在 `/bind` 绑定 Passkey 后才能进入应用。当前仅为本地 localStorage 记录，**不调用真实 GitHub OAuth API**，界面明确标注「模拟登录」免责。真实 GitHub OAuth 集成属 P1 后续迭代。
 - 商家收银台：USDC 金额键盘 → EIP-681 ERC-20 收款 QR → 客户端轮询到账匹配（5 分钟窗口）。
 - 顾客支付：扫码或链接预填 → Passkey → USDC `transfer`（需 MON Gas；诚实展示水龙头）。
 - 支付：MON 转账、余额、基础历史；简单 Swap（MON ↔ USDC）。

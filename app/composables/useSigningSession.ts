@@ -1,5 +1,7 @@
 import type { Secp256k1SigningSession } from '@category-labs/mera'
 
+import { clearAppAuth } from '~/lib/app-auth'
+import { clearBoundAddress } from '~/lib/bound-address'
 import { clearActivity, readActivity, recordPayment } from '~/lib/activity'
 import { continueThenCreate, isMeraError, PasskeyCancelledError } from '~/lib/account'
 import { clearStoredCredentialId, readStoredCredentialId, writeStoredCredentialId } from '~/lib/credential'
@@ -231,6 +233,8 @@ export function useSigningSession() {
     }
     clearStoredCredentialId()
     clearPendingPayUri()
+    clearAppAuth()
+    clearBoundAddress()
     lock()
   }
 

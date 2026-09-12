@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button'
+import { readAppAuth, clearAppAuth } from '~/lib/app-auth'
+import { clearBoundAddress } from '~/lib/bound-address'
 import { FAUCET_URL } from '~/lib/chain'
 import { shortAddress } from '~/lib/format'
 
@@ -10,6 +12,7 @@ const router = useRouter()
 const now = ref(Date.now())
 const showClearConfirm = ref(false)
 const copiedAddress = ref(false)
+const appAuth = ref(readAppAuth())
 
 definePageMeta({
   layout: 'shell',
@@ -62,6 +65,16 @@ function handleClearLocal() {
   void router.replace('/')
 }
 
+function handleGithubMockLogout() {
+  lockSession()
+  clearAppAuth()
+  clearBoundAddress()
+  void router.replace('/')
+}
+
+onMounted(() => {
+  appAuth.value = readAppAuth()
+})
 </script>
 
 <template>
@@ -69,6 +82,56 @@ function handleClearLocal() {
     <h1 class="text-[28px] leading-[1.14] font-semibold tracking-[-0.025em]">
       {{ t('settings') }}
     </h1>
+
+    <!-- GitHub Mock Auth Section -->
+    <section v-if="appAuth" class="rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
+      <h2 class="text-[18px] leading-[1.56] font-medium">
+        {{ t('githubMockLoggedIn') }}
+      </h2>
+      <div class="mt-4 flex flex-col gap-4">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <div v-if="appAuth.avatarUrl" class="size-10 overflow-hidden rounded-full border border-[#e5e5e5] bg-[#fafafa]">
+              <img
+                :src="appAuth.avatarUrl"
+                :alt="appAuth.name"
+                class="size-full object-cover"
+              >
+            </div>
+            <div v-else class="flex size-10 items-center justify-center rounded-full border border-[#e5e5e5] bg-[#fafafa] text-[14px] font-medium text-[#737373]">
+              {{ appAuth.name[0]?.toUpperCase() || '?' }}
+            </div>
+            <div class="flex flex-col">
+              <span class="text-[14px] leading-[1.43] font-medium">{{ appAuth.name }}</span>
+              <span class="text-[13px] leading-[1.4] text-[#737373]">@{{ appAuth.login }}</span>
+            </div>
+          </div>
+        </div>
+        <p class="text-[13px] leading-[1.4] text-[#e7000b]">
+          {{ t('mockDisclaimer') }}
+        </p>
+        <div class="border-t border-[#e5e5e5] pt-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <p class="text-[14px] leading-[1.43] font-medium">
+                {{ t('githubMockLogout') }}
+              </p>
+              <p class="mt-1 text-[13px] leading-[1.4] text-[#737373]">
+                {{ t('githubMockLogoutDescription') }}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              class="shrink-0 border-[#e5e5e5] bg-white shadow-none"
+              @click="handleGithubMockLogout"
+            >
+              {{ t('githubMockLogout') }}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- Account Section -->
     <section class="rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
