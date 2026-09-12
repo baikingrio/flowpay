@@ -25,29 +25,33 @@ export default defineNuxtRouteMiddleware((to) => {
     })
   }
 
-  // If on landing and has auth (with or without bound), may redirect to app
-  if (to.path === '/' && appAuth) {
-    if (boundAddress && account.hasSession) {
-      return navigateTo({
-        path: '/pay',
-        query: uri ? { uri } : {},
-      })
-    }
-    else if (!boundAddress) {
-      return navigateTo({
-        path: '/bind',
-        query: uri ? { uri } : {},
-      })
-    }
-  }
-
-  // Legacy: app routes require address (for backwards compatibility with existing session)
-  if (appRoutes.has(to.path) && !account.address) {
-    if (uri)
-      stashPendingPayUri(uri)
+  // If on landing and has auth + bound, redirect to home
+  if (to.path === '/' && appAuth && boundAddress) {
     return navigateTo({
-      path: '/',
+      path: '/home',
       query: uri ? { uri } : {},
     })
+  }
+
+  // If on landing and has auth but no bound, go to bind
+  if (to.path === '/' && appAuth && !boundAddress) {
+    return navigateTo({
+      path: '/bind',
+      query: uri ? { uri } : {},
+    })
+  }
+
+  // App routes: allow if auth+bound (even without active session)
+  if (appRoutes.has(to.path)) {
+    if (!appAuth || !boundAddress) {
+      if (uri)
+        stashPendingPayUri(uri)
+      return navigateTo({
+        path: '/',
+        query: uri ? { uri } : {},
+      })
+    }
+    // auth+bound present: allow access (browsing without session is OK)
+    // If they need signing, Continue button will prompt open()
   }
 })
