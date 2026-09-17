@@ -46,6 +46,7 @@ pnpm dev
 | [04-MVP-Scope-and-Roadmap.md](./docs/04-MVP-Scope-and-Roadmap.md) | MVP 范围与开发计划 |
 | [05-Demo-Script.md](./docs/05-Demo-Script.md) | 评委演示脚本 |
 | [06-Project-Overview.md](./docs/06-Project-Overview.md) | 项目总览 |
+| **[07-Hackathon-Submission.md](./docs/07-Hackathon-Submission.md)** | **黑客松提交包（评委 2 分钟快速浏览）** |
 
 ---
 
@@ -60,4 +61,21 @@ pnpm dev
 
 ## 状态
 
-生产级 Nuxt 4 应用,已集成 Mera 账户层、USDC 收银台、Swap、Stateless 恢复。可进行完整评委演示。
+**生产级 Nuxt 4 应用，可进行完整评委演示。**
+
+🌐 **在线演示**：https://flowpay-tau-sand.vercel.app
+
+### ✅ 已完成
+- Passkey-first 注册（One-prompt onboarding）
+- Mera Signing Session（会话内 prompt-free 签名）
+- Stateless 恢复（清存储后仅靠 Passkey 恢复）
+- 商家 USDC 收银台 + 顾客扫码支付（双设备）
+- 到账匹配 + 每日流水汇总
+- MON 转账 + Swap（Monad Testnet）
+
+### ⚠️ 已知限制
+- 无 Gas 赞助（需外部水龙头获取 MON）
+- 测试网依赖（Monad Testnet）
+- 需要真实设备/浏览器支持 WebAuthn PRF（推荐 iOS Safari / macOS Safari / Chrome+Windows Hello）
+
+**→ 评委快速了解请阅读 [黑客松提交包](./docs/07-Hackathon-Submission.md)。**

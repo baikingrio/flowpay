@@ -37,4 +37,20 @@ Flowpay — 像流水一样顺畅的链上支付与账户体验。
 - 06-Project-Overview.md     → 本文件
 
 ## 状态
-已完成向 Mera-first 的全面调整，可进入开发。
+
+**生产级 Nuxt 4 应用，已完成核心功能与黑客松演示路径。**
+
+### 已完成
+- ✅ Mera 账户层集成（One-prompt + Signing Session + Stateless 恢复）
+- ✅ 商家 USDC 收银台（`/checkout`）+ 顾客扫码支付（`/pay`）双设备路径
+- ✅ 到账匹配与每日流水汇总
+- ✅ MON 转账 + Swap（测试网）
+- ✅ 响应式设计 + 会话状态可视化
+- ✅ 完整演示脚本（`docs/05-Demo-Script.md`）
+
+### 已知限制
+- ⚠️ 无 Gas 赞助（需外部水龙头获取 MON）
+- ⚠️ 测试网依赖（Monad Testnet）
+- ⚠️ 本地演示为主（部署待 Nuxt on Vercel / Netlify）
+
+详见 [黑客松提交包](./07-Hackathon-Submission.md)。
