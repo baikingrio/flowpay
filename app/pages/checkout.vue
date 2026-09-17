@@ -212,6 +212,7 @@ async function checkForMatch() {
         ledgerTick.value++
       }
       state.value = 'success'
+      playSuccessSound()
       stopPolling()
       clearCheckoutIntent()
     }
@@ -259,6 +260,30 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopPolling()
 })
+
+function playSuccessSound() {
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+
+    oscillator.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime)
+    oscillator.frequency.exponentialRampToValueAtTime(1200, audioContext.currentTime + 0.1)
+
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
+
+    oscillator.start(audioContext.currentTime)
+    oscillator.stop(audioContext.currentTime + 0.3)
+  }
+  catch (error) {
+    // Fail soft if sound is blocked or unavailable
+    console.debug('Success sound unavailable:', error)
+  }
+}
 </script>
 
 <template>
@@ -392,13 +417,15 @@ onBeforeUnmount(() => {
 
     <div v-else-if="state === 'success'" class="flex flex-1 flex-col items-center justify-center">
       <div class="text-center">
-        <p class="text-[48px] leading-[1.1] font-semibold tracking-[-0.05em] text-[#0a0a0a]">
-          ✓
-        </p>
-        <p class="mt-4 text-[36px] leading-[1.11] font-semibold tracking-[-0.025em]">
+        <div class="inline-flex items-center justify-center rounded-full bg-[#16a34a] p-8 animate-[scale-in_0.4s_ease-out]">
+          <p class="text-[72px] leading-[1] font-bold text-white">
+            ✓
+          </p>
+        </div>
+        <p class="mt-6 text-[40px] leading-[1.1] font-bold tracking-[-0.025em] text-[#16a34a]">
           {{ formatUsdcFromBase(parsedAmount!) }} USDC
         </p>
-        <p class="mt-2 text-[14px] leading-[1.43] text-[#737373]">
+        <p class="mt-3 text-[18px] leading-[1.4] font-semibold text-[#0a0a0a]">
           {{ t('checkoutSuccess') }}
         </p>
         <p v-if="explorerHref" class="mt-4 text-[14px] leading-[1.43]">
@@ -439,3 +466,20 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+@keyframes scale-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+</style>
