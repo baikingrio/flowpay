@@ -4,13 +4,15 @@
 
 一条完整可运行的路径，且满足 Mera Bounty 核心要求：
 
-1. 用户仅通过一次 Passkey 仪式完成注册（One-prompt）
+1. 用户仅通过一次 Passkey 仪式完成注册（One-prompt onboarding）
 2. 使用 Mera 作为整个账户层（无种子短语、无扩展、无托管后端）
 3. 完成一笔真实转账（支付 App）
 4. 完成一笔简单 Swap
 5. 支持 Mera Signing Session（会话内可 prompt-free）
 6. **通过 Stateless Test**（清存储或换设备后仅靠 Passkey 恢复）
 7. 尽可能优化 Time-to-first-transaction
+
+**主路径**：Passkey-first (One-prompt)。Mock GitHub / 社交登录作为非评委路径已从主流程移除,可能在后续迭代中作为可选增强。
 
 ---
 
