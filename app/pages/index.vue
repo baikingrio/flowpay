@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button'
-import { writeAppAuth } from '~/lib/app-auth'
-import type { AppAuthSession } from '~/lib/app-auth'
 import { stashPendingPayUri } from '~/lib/pending-pay-uri'
+import { writeBoundAddress } from '~/lib/bound-address'
 
 const { t, locale, setLocale } = useI18n()
 const route = useRoute()
 const account = useAccountStore()
 const router = useRouter()
+const { open } = useSigningSession()
 
 definePageMeta({
   layout: false,
@@ -26,22 +26,23 @@ const steps = [
 ] as const
 
 const ctaClass = 'mt-10 h-11 w-full max-w-[280px] rounded-[18px] text-[14px] font-medium'
+const isOpening = ref(false)
 
 async function onStart() {
+  if (isOpening.value)
+    return
+    
   stashQueryUri()
+  isOpening.value = true
   
-  // Write mock GitHub auth session
-  const mockSession: AppAuthSession = {
-    provider: 'github',
-    login: 'demo-dev',
-    name: 'Demo Developer',
-    avatarUrl: 'https://avatars.githubusercontent.com/u/1?v=4',
-    mock: true,
-    authAt: Date.now(),
+  const ok = await open()
+  
+  if (ok && account.address) {
+    writeBoundAddress(account.address)
+    await router.push('/home')
   }
   
-  writeAppAuth(mockSession)
-  await router.push('/bind')
+  isOpening.value = false
 }
 
 function stashQueryUri() {
@@ -96,16 +97,13 @@ onMounted(stashQueryUri)
 
         <Button
           :class="ctaClass"
+          :disabled="isOpening"
           @click="onStart"
         >
-          {{ t('startMockGithub') }}
+          {{ isOpening ? t('opening') : t('start') }}
         </Button>
 
-        <p class="mt-4 max-w-[32ch] text-[13px] leading-[1.4] text-[#e7000b]">
-          {{ t('mockDisclaimer') }}
-        </p>
-
-        <p class="mt-2 max-w-[32ch] text-[13px] leading-[1.4] text-[#737373]">
+        <p class="mt-4 max-w-[32ch] text-[13px] leading-[1.4] text-[#737373]">
           {{ t('hint') }}
         </p>
         <p class="mt-2 max-w-[36ch] text-[13px] leading-[1.4] text-[#0a0a0a]/70">
@@ -209,9 +207,10 @@ onMounted(stashQueryUri)
       </p>
       <Button
         class="mt-8 h-11 w-full max-w-[280px] rounded-[18px] text-[14px] font-medium"
+        :disabled="isOpening"
         @click="onStart"
       >
-        {{ t('startMockGithub') }}
+        {{ isOpening ? t('opening') : t('start') }}
       </Button>
     </section>
   </main>

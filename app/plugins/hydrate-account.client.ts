@@ -1,4 +1,3 @@
-import { readAppAuth } from '~/lib/app-auth'
 import { readBoundAddress } from '~/lib/bound-address'
 
 export default defineNuxtPlugin(() => {
@@ -7,10 +6,9 @@ export default defineNuxtPlugin(() => {
 
   const account = useAccountStore()
   const boundAddress = readBoundAddress()
-  const appAuth = readAppAuth()
 
   // Hydrate account store from localStorage on client mount
-  if (boundAddress && appAuth) {
+  if (boundAddress) {
     account.address = boundAddress
     account.sessionExpired = false
     // hasSession stays false until open() is called
