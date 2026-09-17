@@ -63,6 +63,8 @@ pnpm dev
 
 **生产级 Nuxt 4 应用，可进行完整评委演示。**
 
+🌐 **在线演示**：https://flowpay-tau-sand.vercel.app
+
 ### ✅ 已完成
 - Passkey-first 注册（One-prompt onboarding）
 - Mera Signing Session（会话内 prompt-free 签名）
@@ -73,7 +75,7 @@ pnpm dev
 
 ### ⚠️ 已知限制
 - 无 Gas 赞助（需外部水龙头获取 MON）
-- 测试网依赖
-- 本地演示为主（部署待 Nuxt on Vercel / Netlify）
+- 测试网依赖（Monad Testnet）
+- 需要真实设备/浏览器支持 WebAuthn PRF（推荐 iOS Safari / macOS Safari / Chrome+Windows Hello）
 
 **→ 评委快速了解请阅读 [黑客松提交包](./docs/07-Hackathon-Submission.md)。**

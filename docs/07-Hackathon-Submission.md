@@ -3,6 +3,8 @@
 **黑客松评委快速浏览包**  
 **预计阅读时间**：2 分钟
 
+🌐 **在线演示**：https://flowpay-tau-sand.vercel.app
+
 ---
 
 ## 一句话简介
@@ -82,9 +84,14 @@ Flowpay — 像流水一样顺畅的链上支付与账户体验。
    早期 PR 曾包含 Mock GitHub 登录作为实验路径，已从主流程移除以严格遵守 Mera One-prompt 要求。评委路径仅为 **Passkey-first**。
 
 ### 🚀 部署状态
-- **当前**：本地演示（`pnpm install && pnpm dev`）
-- **计划**：Nuxt on Vercel / Netlify（标准 SSR 或 Static 部署）
-- **演示 URL**：_（待部署后补充）_
+- **生产部署**：https://flowpay-tau-sand.vercel.app
+- **Vercel 项目**：`baikingrios-projects/flowpay`（已链接 GitHub 仓库，自动部署）
+- **本地开发**：`pnpm install && pnpm dev`
+
+**⚠️ 重要**：Flowpay 需要真实设备/浏览器支持 **WebAuthn PRF 扩展**。推荐：
+- **桌面**：Chrome/Edge + Windows Hello，或 Safari + macOS Touch ID
+- **移动**：iOS Safari + Face ID/Touch ID，或 Android Chrome + 生物识别
+- 不支持虚拟机、模拟器、或不支持 PRF 的浏览器
 
 ---
 
@@ -131,7 +138,9 @@ Flowpay 是标准 Nuxt 4 应用，可部署到任何支持 Node.js 的平台。
    - **Node Version**：22
 3. 部署
 
-**注意**：部署后的应用需要用户设备支持 WebAuthn PRF 扩展（现代浏览器 + iCloud Keychain / Windows Hello / Android 等）。
+**⚠️ 设备要求**：Flowpay 需要真实设备/浏览器支持 **WebAuthn PRF 扩展**（不支持虚拟机/模拟器）。推荐配置：
+- **桌面**：Chrome/Edge + Windows Hello，或 Safari + macOS Touch ID
+- **移动**：iOS Safari + Face ID/Touch ID，或 Android Chrome + 生物识别
 
 ---
 
