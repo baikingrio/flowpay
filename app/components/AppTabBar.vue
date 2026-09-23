@@ -3,12 +3,17 @@ import { ArrowLeftRight, House, Send } from '@lucide/vue'
 
 const route = useRoute()
 const { t } = useI18n()
+const flags = useFeatureFlags()
 
-const tabs = computed(() => [
-  { to: '/home', label: t('navHome'), icon: House },
-  { to: '/pay', label: t('navPay'), icon: Send },
-  { to: '/swap', label: t('navSwap'), icon: ArrowLeftRight },
-])
+const tabs = computed(() => {
+  const allTabs = [
+    { to: '/home', label: t('navHome'), icon: House },
+    { to: '/pay', label: t('navPay'), icon: Send },
+    { to: '/swap', label: t('navSwap'), icon: ArrowLeftRight, requiresFlag: 'swap' as const },
+  ]
+  // Filter out tabs that require feature flags when the flag is disabled
+  return allTabs.filter(tab => !tab.requiresFlag || flags[tab.requiresFlag])
+})
 </script>
 
 <template>

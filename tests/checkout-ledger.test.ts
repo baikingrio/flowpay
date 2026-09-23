@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { CheckoutReceipt } from '../app/lib/checkout-ledger'
 import {
   clearCheckoutLedger,
+  exportReceiptsAsCSV,
   isSameLocalDay,
   readCheckoutLedger,
   recordCheckoutReceipt,
@@ -58,6 +59,7 @@ describe('storage helpers', () => {
       hash: '0xabc',
       amountBase: 10_000_000n,
       to: testAddress,
+      status: 'success',
     }
     const entries = recordCheckoutReceipt(testAddress, receipt, mockStorage)
     expect(entries).toHaveLength(1)
@@ -65,6 +67,7 @@ describe('storage helpers', () => {
       hash: receipt.hash,
       amountBase: receipt.amountBase,
       to: receipt.to,
+      status: 'success',
     })
     expect(entries[0]?.receivedAt).toBeTypeOf('number')
 
@@ -73,11 +76,22 @@ describe('storage helpers', () => {
     expect(readBack[0]).toEqual(entries[0])
   })
 
+  it('defaults to success status for backward compatibility', () => {
+    const receipt: Omit<CheckoutReceipt, 'receivedAt' | 'status'> = {
+      hash: '0xabc',
+      amountBase: 10_000_000n,
+      to: testAddress,
+    }
+    const entries = recordCheckoutReceipt(testAddress, receipt as any, mockStorage)
+    expect(entries[0]?.status).toBe('success')
+  })
+
   it('deduplicates by hash', () => {
     const receipt: Omit<CheckoutReceipt, 'receivedAt'> = {
       hash: '0xabc',
       amountBase: 10_000_000n,
       to: testAddress,
+      status: 'success',
     }
     recordCheckoutReceipt(testAddress, receipt, mockStorage)
     const entries = recordCheckoutReceipt(testAddress, receipt, mockStorage)
@@ -88,10 +102,12 @@ describe('storage helpers', () => {
     const receipt1: Omit<CheckoutReceipt, 'receivedAt'> = {
       hash: '0xaaa',
       amountBase: 5_000_000n,
+      status: 'success',
     }
     const receipt2: Omit<CheckoutReceipt, 'receivedAt'> = {
       hash: '0xbbb',
       amountBase: 10_000_000n,
+      status: 'success',
     }
     recordCheckoutReceipt(testAddress, receipt1, mockStorage)
     const entries = recordCheckoutReceipt(testAddress, receipt2, mockStorage)
@@ -105,7 +121,7 @@ describe('storage helpers', () => {
     for (let i = 0; i < 510; i++) {
       recordCheckoutReceipt(
         testAddress,
-        { hash: `0x${i.toString(16).padStart(3, '0')}`, amountBase: 1_000_000n },
+        { hash: `0x${i.toString(16).padStart(3, '0')}`, amountBase: 1_000_000n, status: 'success' },
         mockStorage,
       )
     }
@@ -118,7 +134,7 @@ describe('storage helpers', () => {
     for (let i = 0; i < 5; i++) {
       recordCheckoutReceipt(
         testAddress,
-        { hash: `0x${i.toString(16)}`, amountBase: 1_000_000n },
+        { hash: `0x${i.toString(16)}`, amountBase: 1_000_000n, status: 'success' },
         mockStorage,
         3,
       )
@@ -129,7 +145,7 @@ describe('storage helpers', () => {
   })
 
   it('clears ledger', () => {
-    recordCheckoutReceipt(testAddress, { hash: '0xabc', amountBase: 10_000_000n }, mockStorage)
+    recordCheckoutReceipt(testAddress, { hash: '0xabc', amountBase: 10_000_000n, status: 'success' }, mockStorage)
     clearCheckoutLedger(testAddress, mockStorage)
     const entries = readCheckoutLedger(testAddress, mockStorage)
     expect(entries).toEqual([])
@@ -139,12 +155,26 @@ describe('storage helpers', () => {
     const receipt: Omit<CheckoutReceipt, 'receivedAt'> = {
       hash: '0xabc',
       amountBase: 12_500_000n,
+      status: 'success',
     }
     recordCheckoutReceipt(testAddress, receipt, mockStorage)
     const raw = storage.get(`flowpay.checkoutLedger.${testAddress.toLowerCase()}`)
     expect(raw).toBeDefined()
     expect(raw).toContain('"amountBase":"12500000"')
     expect(raw).not.toContain('12500000n')
+  })
+
+  it('stores settlement status', () => {
+    const receipt: Omit<CheckoutReceipt, 'receivedAt'> = {
+      hash: '0xabc',
+      amountBase: 10_000_000n,
+      status: 'mismatch',
+    }
+    const entries = recordCheckoutReceipt(testAddress, receipt, mockStorage)
+    expect(entries[0]?.status).toBe('mismatch')
+
+    const readBack = readCheckoutLedger(testAddress, mockStorage)
+    expect(readBack[0]?.status).toBe('mismatch')
   })
 })
 
@@ -166,9 +196,9 @@ describe('summarizeToday', () => {
     const yesterday = new Date('2026-09-10T23:00:00').getTime()
 
     const entries: CheckoutReceipt[] = [
-      { hash: '0xa', amountBase: 5_000_000n, receivedAt: today1 },
-      { hash: '0xb', amountBase: 10_000_000n, receivedAt: today2 },
-      { hash: '0xc', amountBase: 3_000_000n, receivedAt: yesterday },
+      { hash: '0xa', amountBase: 5_000_000n, receivedAt: today1, status: 'success' },
+      { hash: '0xb', amountBase: 10_000_000n, receivedAt: today2, status: 'success' },
+      { hash: '0xc', amountBase: 3_000_000n, receivedAt: yesterday, status: 'success' },
     ]
 
     const summary = summarizeToday(entries, now)
@@ -185,9 +215,9 @@ describe('summarizeToday', () => {
     const t3 = new Date('2026-09-11T14:00:00').getTime()
 
     const entries: CheckoutReceipt[] = [
-      { hash: '0xa', amountBase: 1_000_000n, receivedAt: t1 },
-      { hash: '0xb', amountBase: 2_500_000n, receivedAt: t2 },
-      { hash: '0xc', amountBase: 500_000n, receivedAt: t3 },
+      { hash: '0xa', amountBase: 1_000_000n, receivedAt: t1, status: 'success' },
+      { hash: '0xb', amountBase: 2_500_000n, receivedAt: t2, status: 'success' },
+      { hash: '0xc', amountBase: 500_000n, receivedAt: t3, status: 'success' },
     ]
 
     const summary = summarizeToday(entries, now)
@@ -197,9 +227,92 @@ describe('summarizeToday', () => {
   it('uses current time when nowMs omitted', () => {
     const now = Date.now()
     const entries: CheckoutReceipt[] = [
-      { hash: '0xa', amountBase: 5_000_000n, receivedAt: now },
+      { hash: '0xa', amountBase: 5_000_000n, receivedAt: now, status: 'success' },
     ]
     const summary = summarizeToday(entries)
     expect(summary.count).toBe(1)
+  })
+})
+
+describe('exportReceiptsAsCSV', () => {
+  const testAddress = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb' as `0x${string}`
+
+  it('exports empty CSV with header', () => {
+    const csv = exportReceiptsAsCSV([])
+    expect(csv).toContain('Timestamp,Amount (USDC),Status,Transaction Hash,Merchant Address')
+    const lines = csv.split('\n').filter(line => line.trim() !== '')
+    expect(lines).toHaveLength(1) // Only header, no data rows
+  })
+
+  it('exports receipts with correct columns', () => {
+    const receipts: CheckoutReceipt[] = [
+      {
+        hash: '0xabc123',
+        amountBase: 10_000_000n, // 10 USDC
+        receivedAt: new Date('2026-09-11T15:30:00').getTime(),
+        to: testAddress,
+        status: 'success',
+      },
+      {
+        hash: '0xdef456',
+        amountBase: 5_500_000n, // 5.5 USDC
+        receivedAt: new Date('2026-09-11T16:45:00').getTime(),
+        to: testAddress,
+        status: 'success',
+      },
+    ]
+
+    const csv = exportReceiptsAsCSV(receipts, { locale: 'en-US' })
+    const lines = csv.split('\n')
+
+    expect(lines).toHaveLength(3) // Header + 2 rows
+    expect(lines[0]).toContain('Timestamp,Amount (USDC),Status,Transaction Hash,Merchant Address')
+    expect(lines[1]).toContain('10.000000')
+    expect(lines[1]).toContain('success')
+    expect(lines[1]).toContain('0xabc123')
+    expect(lines[2]).toContain('5.500000')
+    expect(lines[2]).toContain('0xdef456')
+  })
+
+  it('formats amounts with 6 decimals', () => {
+    const receipts: CheckoutReceipt[] = [
+      {
+        hash: '0xabc',
+        amountBase: 1_234_567n, // 1.234567 USDC
+        receivedAt: Date.now(),
+        status: 'success',
+      },
+    ]
+
+    const csv = exportReceiptsAsCSV(receipts)
+    expect(csv).toContain('1.234567')
+  })
+
+  it('includes settlement status', () => {
+    const receipts: CheckoutReceipt[] = [
+      {
+        hash: '0xabc',
+        amountBase: 10_000_000n,
+        receivedAt: Date.now(),
+        status: 'mismatch',
+      },
+    ]
+
+    const csv = exportReceiptsAsCSV(receipts)
+    expect(csv).toContain('mismatch')
+  })
+
+  it('handles missing merchant address', () => {
+    const receipts: CheckoutReceipt[] = [
+      {
+        hash: '0xabc',
+        amountBase: 10_000_000n,
+        receivedAt: Date.now(),
+        status: 'success',
+      },
+    ]
+
+    const csv = exportReceiptsAsCSV(receipts)
+    expect(csv).toContain('N/A')
   })
 })

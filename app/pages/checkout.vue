@@ -10,7 +10,7 @@ import { matchCheckoutTransfer } from '~/lib/checkout-match'
 import { getPublicClient } from '~/lib/ledger'
 import { encodeQrDataUrl } from '~/lib/qr-encode'
 import { blockRanges } from '~/lib/block-ranges'
-import { readCheckoutLedger, recordCheckoutReceipt, summarizeToday } from '~/lib/checkout-ledger'
+import { readCheckoutLedger, recordCheckoutReceipt, summarizeToday, exportReceiptsAsCSV, downloadCSV, isSameLocalDay } from '~/lib/checkout-ledger'
 
 const { t, locale } = useI18n()
 const account = useAccountStore()
@@ -208,6 +208,7 @@ async function checkForMatch() {
           hash: match.hash,
           amountBase: intent.amountBase,
           to: intent.expectedTo,
+          status: 'success',
         })
         ledgerTick.value++
       }
@@ -228,6 +229,16 @@ async function copiedUri() {
 
 async function copiedLink() {
   await navigator.clipboard.writeText(paymentLink.value)
+}
+
+function exportTodayLedger() {
+  if (!account.address)
+    return
+  const entries = readCheckoutLedger(account.address)
+  const todayEntries = entries.filter(entry => isSameLocalDay(entry.receivedAt))
+  const csv = exportReceiptsAsCSV(todayEntries, { locale: locale.value })
+  const today = new Date().toISOString().split('T')[0]
+  downloadCSV(csv, `flowpay-ledger-${today}.csv`)
 }
 
 onMounted(async () => {
@@ -320,12 +331,24 @@ function playSuccessSound() {
       </div>
 
       <div v-if="todaySummary.count > 0" class="mt-8 rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
-        <h2 class="text-[16px] leading-[1.5] font-semibold">
-          {{ t('todayLedger') }}
-        </h2>
-        <p class="mt-1 text-[14px] leading-[1.43] text-[#737373]">
-          {{ t('todayLedgerSummary', { count: todaySummary.count, total: formatUsdcFromBase(todaySummary.totalBase) }) }}
-        </p>
+        <div class="flex items-start justify-between">
+          <div>
+            <h2 class="text-[16px] leading-[1.5] font-semibold">
+              {{ t('todayLedger') }}
+            </h2>
+            <p class="mt-1 text-[14px] leading-[1.43] text-[#737373]">
+              {{ t('todayLedgerSummary', { count: todaySummary.count, total: formatUsdcFromBase(todaySummary.totalBase) }) }}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            class="border-[#e5e5e5] bg-white shadow-none"
+            @click="exportTodayLedger"
+          >
+            {{ t('exportCSV') }}
+          </Button>
+        </div>
         <div v-if="todaySummary.items.length > 0" class="mt-4 space-y-2">
           <div
             v-for="item in todaySummary.items"
