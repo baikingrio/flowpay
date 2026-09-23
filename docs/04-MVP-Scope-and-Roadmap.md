@@ -20,6 +20,8 @@
 
 ### P0（必须完成 — 含 Mera 强制项 + 当面收款产品路径）
 > 状态核对：`main` @ 2026-09-11（含收银台 `5759bc6`）。当面收款双设备路径已验收。
+>
+> **产品主线（2026-09-23 更新）**：聚焦**商家↔顾客 USDC 收款**。详见 `docs/08-Real-Product-v0.md`。
 
 - [x] 集成 `@category-labs/mera`，完成 createPasskeyWithPrfOutput → EOA 派生
 - [x] 一次 Passkey 仪式的注册 / 登录流程（Continue-first，非 login 分叉）
@@ -27,7 +29,7 @@
 - [x] **商家收银台**（`/checkout`）：USDC 金额键盘 → EIP-681 ERC-20 `/transfer` QR → 客户端轮询 USDC `Transfer` 事件 → 到账匹配（5 分钟窗口）— **双设备验收通过（2026-09-11）**
 - [x] **顾客支付**（`/pay` 扩展）：EIP-681 ERC-20 URI 预填 → Passkey → USDC `transfer`（需 MON Gas；诚实展示水龙头）— **双设备验收通过（2026-09-11）**
 - [x] 支付页：MON 转账 + Session 感知的签名
-- [x] 简单 Swap 页 + 同样的 Session 逻辑（测试网 Uniswap V2 兼容路由 / PuddleSwap，MON ↔ USDC）
+- [x] ~~简单 Swap 页 + 同样的 Session 逻辑（测试网 Uniswap V2 兼容路由 / PuddleSwap，MON ↔ USDC）~~ — **已暂停**：Swap 代码保留但从主导航隐藏；产品主线为支付收款
 - [x] Stateless 恢复路径（清存储后仍可恢复；设置页「清除本机数据」+ `docs/stateless-recovery.md`）
 - [x] 基础交易历史与余额展示
 - [x] 错误处理与加载状态
