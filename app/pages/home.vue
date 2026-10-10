@@ -4,11 +4,18 @@ import { FAUCET_URL } from '~/lib/chain'
 import { shortTxHash } from '~/lib/activity'
 import { shortAddress } from '~/lib/format'
 import { formatMon } from '~/lib/ledger'
+import { IS_MOCK_USDC } from '~/lib/tokens'
+import { formatUsdcFromBase } from '~/lib/usdc-amount'
+import { readUsdcBalance } from '~/lib/usdc'
 
 const { t } = useI18n()
 const account = useAccountStore()
+const { claimTestUsdc } = useSigningSession()
 const copied = ref(false)
 const showReceive = ref(false)
+const usdcBalance = ref<bigint | undefined>(undefined)
+const claimingUsdc = ref(false)
+const claimUsdcHash = ref<`0x${string}` | undefined>(undefined)
 
 definePageMeta({
   layout: 'shell',
@@ -25,6 +32,44 @@ async function copyAddress() {
     copied.value = false
   }, 1500)
 }
+
+async function refreshUsdc() {
+  if (!account.address) {
+    usdcBalance.value = undefined
+    return
+  }
+  try {
+    usdcBalance.value = await readUsdcBalance(account.address)
+  }
+  catch {
+    usdcBalance.value = undefined
+  }
+}
+
+async function onClaimUsdc() {
+  if (claimingUsdc.value || !account.hasSession)
+    return
+  claimingUsdc.value = true
+  claimUsdcHash.value = undefined
+  try {
+    const hash = await claimTestUsdc()
+    if (hash) {
+      claimUsdcHash.value = hash
+      await refreshUsdc()
+    }
+  }
+  finally {
+    claimingUsdc.value = false
+  }
+}
+
+onMounted(() => {
+  void refreshUsdc()
+})
+
+watch(() => account.address, () => {
+  void refreshUsdc()
+})
 </script>
 
 <template>
@@ -39,6 +84,15 @@ async function copyAddress() {
           <span class="text-[18px] font-medium tracking-normal text-[#737373]">MON</span>
         </template>
       </h1>
+      <p class="mt-2 text-[18px] font-medium tabular-nums text-[#0a0a0a]">
+        <template v-if="usdcBalance === undefined">
+          —
+        </template>
+        <template v-else>
+          {{ formatUsdcFromBase(usdcBalance) }}
+          <span class="text-[14px] font-medium text-[#737373]">{{ IS_MOCK_USDC ? 'mUSDC' : 'USDC' }}</span>
+        </template>
+      </p>
       <p class="mt-3 text-[14px] leading-[1.43] text-[#737373]">
         {{ account.address ? shortAddress(account.address) : '' }}
       </p>
@@ -61,6 +115,15 @@ async function copyAddress() {
       <Button variant="outline" class="w-full border-[#e5e5e5] bg-white shadow-none" @click="copyAddress">
         {{ copied ? t('copied') : t('copy') }}
       </Button>
+      <Button
+        v-if="IS_MOCK_USDC && account.hasSession"
+        variant="outline"
+        class="w-full border-[#e5e5e5] bg-white shadow-none"
+        :disabled="claimingUsdc"
+        @click="onClaimUsdc"
+      >
+        {{ claimingUsdc ? t('faucetClaiming') : t('faucetClaimMock') }}
+      </Button>
       <NuxtLink
         v-if="account.balanceWei === 0n"
         class="flex h-10 items-center justify-center rounded-[18px] border border-[#e5e5e5] bg-white text-[14px] font-medium"
@@ -78,6 +141,18 @@ async function copyAddress() {
 
     <p v-if="account.balanceWei === 0n" class="text-[14px] leading-[1.43] text-[#737373]">
       {{ t('faucetNeed') }}
+    </p>
+    <p v-if="IS_MOCK_USDC" class="text-[14px] leading-[1.43] text-[#737373]">
+      {{ t('faucetMockHint') }}
+    </p>
+    <p v-if="claimUsdcHash" class="text-[14px] leading-[1.43] text-[#737373]">
+      {{ t('faucetClaimed') }}
+      <NuxtLink class="underline" :to="`${explorerBase}${claimUsdcHash}`" external>
+        {{ shortTxHash(claimUsdcHash) }}
+      </NuxtLink>
+    </p>
+    <p v-if="account.errorMessage === 'faucetClaimFailed'" class="text-[14px] leading-[1.43] text-[#b91c1c]">
+      {{ t('faucetClaimFailed') }}
     </p>
 
     <section class="rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">

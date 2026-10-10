@@ -3,7 +3,7 @@ import { toViemAccount } from '@category-labs/mera/viem'
 import type { Secp256k1SigningSession } from '@category-labs/mera'
 
 import { chain } from './chain'
-import { USDC_ADDRESS } from './tokens'
+import { IS_MOCK_USDC, USDC_ADDRESS } from './tokens'
 import { getPublicClient } from './ledger'
 
 const ERC20_ABI = [
@@ -21,6 +21,13 @@ const ERC20_ABI = [
     ],
     name: 'transfer',
     outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'claim',
+    outputs: [],
     stateMutability: 'nonpayable',
     type: 'function',
   },
@@ -58,6 +65,37 @@ export async function sendUsdcTransfer(
   const receipt = await client.waitForTransactionReceipt({ hash })
   if (receipt.status !== 'success')
     throw new Error('USDC transfer failed')
+
+  return hash
+}
+
+
+/** Claim Mock USDC via on-chain faucet (no server). No-op / throws if not mock. */
+export async function claimMockUsdc(
+  session: Secp256k1SigningSession,
+): Promise<`0x${string}`> {
+  if (!IS_MOCK_USDC)
+    throw new Error('Mock USDC claim is disabled for Circle USDC')
+  if (USDC_ADDRESS === '0x0000000000000000000000000000000000000000')
+    throw new Error('Mock USDC not deployed yet')
+
+  const account = toViemAccount(session)
+  const wallet = createWalletClient({
+    account,
+    chain,
+    transport: http(),
+  })
+
+  const hash = await wallet.writeContract({
+    address: USDC_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: 'claim',
+  })
+
+  const client = getPublicClient()
+  const receipt = await client.waitForTransactionReceipt({ hash })
+  if (receipt.status !== 'success')
+    throw new Error('Mock USDC claim failed')
 
   return hash
 }

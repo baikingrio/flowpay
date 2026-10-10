@@ -28,3 +28,7 @@ logs
 # macOS AppleDouble / metadata
 ._*
 .DS_Store
+
+out/
+cache/
+broadcast/
