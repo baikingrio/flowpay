@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildErc20TransferUri, buildPaymentUri, parsePaymentUri, toAppPayPath } from '../app/lib/eip681'
+import { buildErc20TransferUri, buildPaymentUri, parsePaymentUri, toAppPayPath, unwrapPaymentInput } from '../app/lib/eip681'
 import { USDC_ADDRESS } from '../app/lib/tokens'
 
 const ADDR = '0x000000000000000000000000000000000000dEaD' as const
@@ -119,5 +119,31 @@ describe('ERC-20 transfer URI', () => {
   it('still rejects unknown functions', () => {
     const r = parsePaymentUri(`ethereum:${USDC_ADDRESS}@10143/approve?address=${RECV}&uint256=1`, 10143)
     expect(r).toEqual({ ok: false, error: 'unsupported_function' })
+  })
+})
+
+
+describe('unwrapPaymentInput / HTTPS checkout QR', () => {
+  it('extracts ethereum URI from Flowpay pay link', () => {
+    const inner = buildErc20TransferUri({
+      token: USDC_ADDRESS,
+      to: '0x1111111111111111111111111111111111111111',
+      amount: 1_000_000n,
+    })
+    const link = `https://flowpay-tau-sand.vercel.app${toAppPayPath(inner)}`
+    expect(unwrapPaymentInput(link)).toBe(inner)
+    const r = parsePaymentUri(link, 10143)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.tokenAddress?.toLowerCase()).toBe(USDC_ADDRESS.toLowerCase())
+      expect(r.address?.toLowerCase()).toBe('0x1111111111111111111111111111111111111111')
+      expect(r.tokenAmount).toBe(1_000_000n)
+      expect(r.ensName).toBeUndefined()
+    }
+  })
+
+  it('does not treat https URLs as ENS names', () => {
+    const r = parsePaymentUri('https://example.com/pay?foo=1', 10143)
+    expect(r.ok).toBe(false)
   })
 })

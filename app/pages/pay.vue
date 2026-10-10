@@ -2,13 +2,13 @@
 import { Delete } from '@lucide/vue'
 import { isAddress, parseEther, type Address } from 'viem'
 import { Button } from '@/components/ui/button'
-import { FAUCET_URL, FIRST_PAYMENT_TO, FIRST_PAYMENT_VALUE, isFirstPaymentDefaults } from '~/lib/chain'
+import { FAUCET_URL } from '~/lib/chain'
 import { parsePaymentUri, type ParsePaymentUriFailure } from '~/lib/eip681'
 import { resolveEnsName } from '~/lib/ens'
 import { shortAddress } from '~/lib/format'
 import { formatMon } from '~/lib/ledger'
 import { clearPendingPayUri, readPendingPayUri } from '~/lib/pending-pay-uri'
-import { USDC_ADDRESS } from '~/lib/tokens'
+import { IS_MOCK_USDC, USDC_ADDRESS } from '~/lib/tokens'
 import { formatUsdcFromBase, parseUsdcToBase } from '~/lib/usdc-amount'
 
 const { t } = useI18n()
@@ -22,9 +22,9 @@ definePageMeta({
   layout: 'shell',
 })
 
-const recipient = ref<string>(FIRST_PAYMENT_TO)
-const amountText = ref(formatMon(FIRST_PAYMENT_VALUE))
-const asset = ref<Asset>('mon')
+const recipient = ref('')
+const amountText = ref('')
+const asset = ref<Asset>('usdc')
 const usdcBalance = ref<bigint>(0n)
 const localError = ref<string | undefined>()
 const localWarning = ref<string | undefined>()
@@ -40,7 +40,15 @@ const parsedRecipient = computed(() => {
     return undefined
   return value as Address
 })
-const assetLabel = computed(() => asset.value === 'usdc' ? 'USDC' : 'MON')
+const assetLabel = computed(() => asset.value === 'usdc' ? (IS_MOCK_USDC ? 'mUSDC' : 'USDC') : 'MON')
+
+function setAsset(next: Asset) {
+  if (asset.value === next)
+    return
+  asset.value = next
+  amountText.value = ''
+  localError.value = undefined
+}
 const recentRecipients = computed(() => {
   const seen = new Set<string>()
   return account.activity
@@ -77,9 +85,6 @@ const canPay = computed(() => {
   return account.balanceWei !== undefined && account.balanceWei > parsedAmount.value
 })
 
-const isFirstPayment = computed(() =>
-  isFirstPaymentDefaults(recipient.value, parsedAmount.value),
-)
 
 function parseAmountText(raw: string, assetType: Asset): bigint | undefined {
   const cleaned = raw.endsWith('.') ? raw.slice(0, -1) : raw
@@ -180,6 +185,8 @@ function mapParseError(error: ParsePaymentUriFailure['error']): string {
 function looksLikePaymentInput(raw: string): boolean {
   const value = raw.trim()
   return value.toLowerCase().startsWith('ethereum:')
+    || /^https?:\/\//i.test(value)
+    || value.startsWith('/pay?')
     || /^0x[0-9a-fA-F]{40}$/.test(value)
 }
 
@@ -319,7 +326,26 @@ watch(() => account.hasSession, async (hasSession) => {
         </div>
       </div>
 
-      <p class="mt-8 text-[48px] leading-[1.1] font-semibold tracking-[-0.05em] tabular-nums">
+      <div class="mt-6 flex gap-2">
+        <button
+          type="button"
+          class="h-9 rounded-2xl px-4 text-[13px] font-medium"
+          :class="asset === 'usdc' ? 'bg-[#0a0a0a] text-[#fafafa]' : 'bg-[#f5f5f5] text-[#737373]'"
+          @click="setAsset('usdc')"
+        >
+          {{ IS_MOCK_USDC ? 'mUSDC' : 'USDC' }}
+        </button>
+        <button
+          type="button"
+          class="h-9 rounded-2xl px-4 text-[13px] font-medium"
+          :class="asset === 'mon' ? 'bg-[#0a0a0a] text-[#fafafa]' : 'bg-[#f5f5f5] text-[#737373]'"
+          @click="setAsset('mon')"
+        >
+          MON
+        </button>
+      </div>
+
+      <p class="mt-4 text-[48px] leading-[1.1] font-semibold tracking-[-0.05em] tabular-nums">
         <span :class="amountText ? 'text-[#0a0a0a]' : 'text-[#737373]'">
           {{ amountText || '0' }}
         </span>
@@ -353,10 +379,7 @@ watch(() => account.hasSession, async (hasSession) => {
       >
         {{ t('faucet') }}
       </NuxtLink>
-      <p v-if="isFirstPayment && !externalPrefill" class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
-        {{ t('firstPaymentHint') }}
-      </p>
-      <p v-else-if="insufficientGas" class="mt-4 text-[14px] leading-[1.43] text-[#e7000b]">
+      <p v-if="insufficientGas" class="mt-4 text-[14px] leading-[1.43] text-[#e7000b]">
         {{ t('insufficientGas') }}
       </p>
       <p v-else-if="insufficient" class="mt-4 text-[14px] leading-[1.43] text-[#e7000b]">
