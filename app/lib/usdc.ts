@@ -76,8 +76,6 @@ export async function claimMockUsdc(
 ): Promise<`0x${string}`> {
   if (!IS_MOCK_USDC)
     throw new Error('Mock USDC claim is disabled for Circle USDC')
-  if (USDC_ADDRESS === '0x0000000000000000000000000000000000000000')
-    throw new Error('Mock USDC not deployed yet')
 
   const account = toViemAccount(session)
   const wallet = createWalletClient({
