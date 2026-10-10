@@ -284,87 +284,125 @@ watch(() => account.hasSession, async (hasSession) => {
 </script>
 
 <template>
-  <form class="flex min-h-[calc(100dvh-160px)] flex-col" @submit.prevent="onSend">
-    <div class="flex-1">
-      <div>
-        <label for="pay-recipient" class="mb-2 block text-[14px] leading-[1.43] text-[#737373]">
-          {{ t('payTo') }}
-        </label>
-        <span class="flex gap-2">
-          <input
-            id="pay-recipient"
-            ref="toField"
-            v-model="recipient"
-            class="h-10 min-w-0 flex-1 rounded-[18px] bg-[#f5f5f5] px-2.5 text-[14px] leading-[1.43] text-[#0a0a0a] outline-none placeholder:text-[#737373] focus:bg-transparent focus:ring-1 focus:ring-[#e5e5e5]"
-            :placeholder="t('payToPlaceholder')"
-            autocomplete="off"
-            spellcheck="false"
-            inputmode="text"
-            @blur="applyRecipientIfPaymentInput"
-            @keydown.enter.prevent
-            @paste="onRecipientPaste"
-          >
-          <PayScanControl @detected="applyPaymentInput" />
-        </span>
+  <form
+    class="flex h-[calc(100dvh-160px)] max-h-[calc(100dvh-160px)] flex-col overflow-hidden"
+    @submit.prevent="onSend"
+  >
+    <div class="shrink-0 space-y-2">
+      <div class="flex gap-2">
+        <input
+          id="pay-recipient"
+          ref="toField"
+          v-model="recipient"
+          class="h-9 min-w-0 flex-1 rounded-2xl bg-[#f5f5f5] px-2.5 text-[13px] leading-[1.4] text-[#0a0a0a] outline-none placeholder:text-[#737373] focus:bg-transparent focus:ring-1 focus:ring-[#e5e5e5]"
+          :placeholder="t('payToPlaceholder')"
+          autocomplete="off"
+          spellcheck="false"
+          inputmode="text"
+          :aria-label="t('payTo')"
+          @blur="applyRecipientIfPaymentInput"
+          @keydown.enter.prevent
+          @paste="onRecipientPaste"
+        >
+        <PayScanControl @detected="applyPaymentInput" />
       </div>
 
-      <div v-if="recentRecipients.length" class="mt-4">
-        <p class="mb-2 text-[13px] leading-[1.4] text-[#737373]">
-          {{ t('recentRecipients') }}
-        </p>
-        <div class="flex flex-wrap gap-2">
+      <div v-if="recentRecipients.length" class="flex gap-1.5 overflow-x-auto pb-0.5">
+        <button
+          v-for="address in recentRecipients.slice(0, 4)"
+          :key="address"
+          type="button"
+          class="h-7 shrink-0 rounded-xl bg-[#f5f5f5] px-2.5 text-[12px] text-[#0a0a0a]"
+          :title="address"
+          @click="recipient = address"
+        >
+          {{ shortAddress(address) }}
+        </button>
+      </div>
+
+      <div class="flex items-end justify-between gap-3">
+        <div class="flex gap-1.5">
           <button
-            v-for="address in recentRecipients"
-            :key="address"
             type="button"
-            class="h-8 rounded-2xl bg-[#f5f5f5] px-3 text-[13px] text-[#0a0a0a] hover:bg-[#ececec]"
-            :title="address"
-            @click="recipient = address"
+            class="h-8 rounded-xl px-3 text-[12px] font-medium"
+            :class="asset === 'usdc' ? 'bg-[#0a0a0a] text-[#fafafa]' : 'bg-[#f5f5f5] text-[#737373]'"
+            @click="setAsset('usdc')"
           >
-            {{ shortAddress(address) }}
+            {{ IS_MOCK_USDC ? 'mUSDC' : 'USDC' }}
+          </button>
+          <button
+            type="button"
+            class="h-8 rounded-xl px-3 text-[12px] font-medium"
+            :class="asset === 'mon' ? 'bg-[#0a0a0a] text-[#fafafa]' : 'bg-[#f5f5f5] text-[#737373]'"
+            @click="setAsset('mon')"
+          >
+            MON
           </button>
         </div>
+        <p class="min-w-0 text-right text-[32px] leading-[1.1] font-semibold tracking-[-0.04em] tabular-nums">
+          <span :class="amountText ? 'text-[#0a0a0a]' : 'text-[#737373]'">{{ amountText || '0' }}</span>
+          <span class="ml-1 text-[13px] font-medium tracking-normal text-[#737373]">{{ assetLabel }}</span>
+        </p>
       </div>
+    </div>
 
-      <div class="mt-6 flex gap-2">
-        <button
-          type="button"
-          class="h-9 rounded-2xl px-4 text-[13px] font-medium"
-          :class="asset === 'usdc' ? 'bg-[#0a0a0a] text-[#fafafa]' : 'bg-[#f5f5f5] text-[#737373]'"
-          @click="setAsset('usdc')"
-        >
-          {{ IS_MOCK_USDC ? 'mUSDC' : 'USDC' }}
-        </button>
-        <button
-          type="button"
-          class="h-9 rounded-2xl px-4 text-[13px] font-medium"
-          :class="asset === 'mon' ? 'bg-[#0a0a0a] text-[#fafafa]' : 'bg-[#f5f5f5] text-[#737373]'"
-          @click="setAsset('mon')"
-        >
-          MON
-        </button>
-      </div>
+    <div class="mt-2 grid min-h-0 flex-1 grid-cols-3 gap-1.5 content-stretch">
+      <button
+        v-for="key in keys"
+        :key="key"
+        type="button"
+        class="flex min-h-0 items-center justify-center rounded-2xl bg-[#f5f5f5] text-[17px] font-medium text-[#0a0a0a] outline-none active:scale-[0.98]"
+        :aria-label="key === 'back' ? t('payBackspace') : key === '.' ? t('payDecimal') : key"
+        @click="pressKey(key)"
+      >
+        <Delete v-if="key === 'back'" class="size-4" :stroke-width="1.75" />
+        <template v-else>
+          {{ key }}
+        </template>
+      </button>
+    </div>
 
-      <p class="mt-4 text-[48px] leading-[1.1] font-semibold tracking-[-0.05em] tabular-nums">
-        <span :class="amountText ? 'text-[#0a0a0a]' : 'text-[#737373]'">
-          {{ amountText || '0' }}
-        </span>
-        <span class="ml-2 text-[18px] font-medium tracking-normal text-[#737373]">{{ assetLabel }}</span>
+    <div class="mt-2 shrink-0 space-y-1">
+      <p
+        v-if="localError || account.errorMessage || insufficient || insufficientGas || localWarning || (account.lastTxHash && explorerHref) || (account.sessionExpired && !account.hasSession) || account.balanceWei === 0n"
+        class="truncate text-[12px] leading-[1.33]"
+        :class="(localError || account.errorMessage || insufficient || insufficientGas) ? 'text-[#e7000b]' : 'text-[#737373]'"
+      >
+        <template v-if="localError || account.errorMessage">{{ t(localError || account.errorMessage || '') }}</template>
+        <template v-else-if="insufficientGas">{{ t('insufficientGas') }}</template>
+        <template v-else-if="insufficient">{{ t(asset === 'usdc' ? 'insufficientUsdc' : 'insufficient') }}</template>
+        <template v-else-if="localWarning">{{ t(localWarning) }}</template>
+        <template v-else-if="account.lastTxHash && explorerHref">
+          {{ t('sent') }}
+          <NuxtLink class="underline" :to="explorerHref" external>{{ t('explorer') }}</NuxtLink>
+        </template>
+        <template v-else-if="account.sessionExpired && !account.hasSession">{{ t('sessionExpiredPrompt') }}</template>
+        <template v-else-if="account.balanceWei === 0n">
+          {{ t('faucetNeed') }}
+          <NuxtLink class="underline" :to="FAUCET_URL" external>{{ t('faucet') }}</NuxtLink>
+        </template>
       </p>
 
-      <div class="mt-8 grid grid-cols-3 gap-2 rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
-        <button
-          v-for="key in keys"
-          :key="key"
-          type="button"
-          class="flex h-12 items-center justify-center rounded-[18px] bg-[#f5f5f5] text-[18px] leading-[1.56] font-medium text-[#0a0a0a] transition-transform duration-150 ease-out outline-none hover:bg-[#ececec] focus-visible:ring-1 focus-visible:ring-[#e5e5e5] active:translate-y-px active:scale-[0.98]"
-          :aria-label="key === 'back' ? t('payBackspace') : key === '.' ? t('payDecimal') : key"
-          @click="pressKey(key)"
-        >
-          <Delete v-if="key === 'back'" class="size-5" :stroke-width="1.75" />
-          <template v-else>
-            {{ key }}
-          </template>
+      <Button
+        v-if="!account.hasSession"
+        class="h-10 w-full bg-[#0a0a0a] text-[14px] font-medium text-[#fafafa] hover:bg-[#0a0a0a]/90"
+        type="button"
+        :disabled="account.status === 'opening'"
+        @click="open"
+      >
+        {{ account.status === 'opening' ? t('opening') : account.sessionExpired ? t('continue') : t('start') }}
+      </Button>
+      <Button
+        v-else
+        class="h-10 w-full bg-[#0a0a0a] text-[14px] font-medium text-[#fafafa] hover:bg-[#0a0a0a]/90"
+        type="submit"
+        :disabled="!canPay || account.status === 'sending'"
+      >
+        {{ account.status === 'sending' ? t('sending') : t('send') }}
+      </Button>
+    </div>
+  </form>
+</template>
         </button>
       </div>
 
