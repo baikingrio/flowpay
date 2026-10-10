@@ -3,7 +3,7 @@ import { Delete } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { buildErc20TransferUri, toAppPayPath } from '~/lib/eip681'
 import { formatUsdcFromBase, parseUsdcToBase } from '~/lib/usdc-amount'
-import { USDC_ADDRESS } from '~/lib/tokens'
+import { IS_MOCK_USDC, USDC_ADDRESS } from '~/lib/tokens'
 import { clearCheckoutIntent, readCheckoutIntent, stashCheckoutIntent } from '~/lib/pending-checkout'
 import type { TransferCandidate } from '~/lib/checkout-match'
 import { matchCheckoutTransfer } from '~/lib/checkout-match'
@@ -298,93 +298,55 @@ function playSuccessSound() {
 </script>
 
 <template>
-  <div class="flex min-h-[calc(100dvh-160px)] flex-col">
-    <div v-if="state === 'idle'" class="flex flex-1 flex-col">
-      <h1 class="text-[24px] leading-[1.33] font-semibold tracking-[-0.025em]">
-        {{ t('checkout') }}
-      </h1>
-      <p class="mt-2 text-[14px] leading-[1.43] text-[#737373]">
-        {{ t('checkoutDescription') }}
+  <div class="flex h-[calc(100dvh-160px)] max-h-[calc(100dvh-160px)] flex-col overflow-hidden">
+    <!-- Idle: amount + keypad -->
+    <div v-if="state === 'idle'" class="flex min-h-0 flex-1 flex-col">
+      <div class="flex shrink-0 items-baseline justify-between gap-2">
+        <h1 class="text-[16px] font-semibold tracking-[-0.02em]">
+          {{ t('checkout') }}
+        </h1>
+        <p class="truncate text-[12px] text-[#737373]">
+          <template v-if="todaySummary.count > 0">
+            {{ t('todayLedgerSummary', { count: todaySummary.count, total: formatUsdcFromBase(todaySummary.totalBase) }) }}
+          </template>
+          <template v-else>
+            {{ t('todayLedgerEmpty') }}
+          </template>
+        </p>
+      </div>
+
+      <p class="mt-2 shrink-0 text-right text-[36px] leading-[1.1] font-semibold tracking-[-0.04em] tabular-nums">
+        <span :class="amountText ? 'text-[#0a0a0a]' : 'text-[#737373]'">{{ amountText || '0' }}</span>
+        <span class="ml-1 text-[14px] font-medium tracking-normal text-[#737373]">{{ IS_MOCK_USDC ? 'mUSDC' : 'USDC' }}</span>
       </p>
 
-      <p class="mt-8 text-[48px] leading-[1.1] font-semibold tracking-[-0.05em] tabular-nums">
-        <span :class="amountText ? 'text-[#0a0a0a]' : 'text-[#737373]'">
-          {{ amountText || '0' }}
-        </span>
-        <span class="ml-2 text-[18px] font-medium tracking-normal text-[#737373]">USDC</span>
-      </p>
-
-      <div class="mt-8 grid grid-cols-3 gap-2 rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
+      <div class="mt-2 grid min-h-0 flex-1 grid-cols-3 gap-1.5 content-stretch">
         <button
           v-for="key in keys"
           :key="key"
           type="button"
-          class="flex h-12 items-center justify-center rounded-[18px] bg-[#f5f5f5] text-[18px] leading-[1.56] font-medium text-[#0a0a0a] transition-transform duration-150 ease-out outline-none hover:bg-[#ececec] focus-visible:ring-1 focus-visible:ring-[#e5e5e5] active:translate-y-px active:scale-[0.98]"
+          class="flex min-h-0 items-center justify-center rounded-2xl bg-[#f5f5f5] text-[17px] font-medium text-[#0a0a0a] outline-none active:scale-[0.98]"
           :aria-label="key === 'back' ? t('payBackspace') : key === '.' ? t('payDecimal') : key"
           @click="pressKey(key)"
         >
-          <Delete v-if="key === 'back'" class="size-5" :stroke-width="1.75" />
+          <Delete v-if="key === 'back'" class="size-4" :stroke-width="1.75" />
           <template v-else>
             {{ key }}
           </template>
         </button>
       </div>
 
-      <div v-if="todaySummary.count > 0" class="mt-8 rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
-        <div class="flex items-start justify-between">
-          <div>
-            <h2 class="text-[16px] leading-[1.5] font-semibold">
-              {{ t('todayLedger') }}
-            </h2>
-            <p class="mt-1 text-[14px] leading-[1.43] text-[#737373]">
-              {{ t('todayLedgerSummary', { count: todaySummary.count, total: formatUsdcFromBase(todaySummary.totalBase) }) }}
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            class="border-[#e5e5e5] bg-white shadow-none"
-            @click="exportTodayLedger"
-          >
-            {{ t('exportCSV') }}
-          </Button>
-        </div>
-        <div v-if="todaySummary.items.length > 0" class="mt-4 space-y-2">
-          <div
-            v-for="item in todaySummary.items"
-            :key="item.hash"
-            class="flex items-center justify-between text-[14px] leading-[1.43]"
-          >
-            <span class="text-[#737373]">{{ new Date(item.receivedAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }}</span>
-            <span class="font-medium tabular-nums">{{ formatUsdcFromBase(item.amountBase) }} USDC</span>
-            <NuxtLink
-              :to="`https://testnet.monadexplorer.com/tx/${item.hash}`"
-              external
-              class="text-[#0a0a0a] underline"
-            >
-              ↗
-            </NuxtLink>
-          </div>
-        </div>
-        <p class="mt-4 text-[12px] leading-[1.5] text-[#a3a3a3]">
-          {{ t('todayLedgerFootnote') }}
-        </p>
-      </div>
-      <div v-else class="mt-8 rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
-        <h2 class="text-[16px] leading-[1.5] font-semibold">
-          {{ t('todayLedger') }}
-        </h2>
-        <p class="mt-1 text-[14px] leading-[1.43] text-[#737373]">
-          {{ t('todayLedgerEmpty') }}
-        </p>
-        <p class="mt-4 text-[12px] leading-[1.5] text-[#a3a3a3]">
-          {{ t('todayLedgerFootnote') }}
-        </p>
-      </div>
-
-      <div class="mt-auto pt-6">
+      <div class="mt-2 flex shrink-0 gap-2">
         <Button
-          class="w-full"
+          v-if="todaySummary.count > 0"
+          variant="outline"
+          class="h-10 flex-1 border-[#e5e5e5] bg-white shadow-none"
+          @click="exportTodayLedger"
+        >
+          {{ t('exportCSV') }}
+        </Button>
+        <Button
+          class="h-10 flex-[2]"
           :disabled="!canStartCheckout"
           @click="startCheckout"
         >
@@ -393,44 +355,49 @@ function playSuccessSound() {
       </div>
     </div>
 
-    <div v-else-if="state === 'pending'" class="flex flex-1 flex-col items-center justify-center">
-      <p class="text-[36px] leading-[1.11] font-semibold tracking-[-0.025em]">
-        {{ formatUsdcFromBase(parsedAmount!) }} USDC
-      </p>
-      <p class="mt-2 text-[14px] leading-[1.43] text-[#737373]">
-        {{ t('checkoutWaiting') }}
-      </p>
-
-      <div class="mt-8 rounded-[24px] border border-[#e5e5e5] bg-white p-8 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
-        <img
-          v-if="qrDataUri"
-          :src="qrDataUri"
-          alt="Payment QR code"
-          class="size-64"
-        >
+    <!-- Pending: compact QR -->
+    <div v-else-if="state === 'pending'" class="flex min-h-0 flex-1 flex-col">
+      <div class="shrink-0 text-center">
+        <p class="text-[28px] font-semibold tracking-[-0.03em] tabular-nums">
+          {{ formatUsdcFromBase(parsedAmount ?? 0n) }}
+          <span class="text-[14px] font-medium text-[#737373]">{{ IS_MOCK_USDC ? 'mUSDC' : 'USDC' }}</span>
+        </p>
+        <p class="mt-1 text-[13px] text-[#737373]">
+          {{ t('checkoutWaiting') }}
+        </p>
       </div>
 
-      <div class="mt-4 flex gap-2">
-        <Button
-          variant="outline"
-          class="border-[#e5e5e5] bg-white shadow-none"
-          @click="copiedUri"
-        >
-          {{ t('copyUri') }}
-        </Button>
-        <Button
-          variant="outline"
-          class="border-[#e5e5e5] bg-white shadow-none"
-          @click="copiedLink"
-        >
-          {{ t('copyPayLink') }}
-        </Button>
+      <div class="flex min-h-0 flex-1 items-center justify-center py-2">
+        <div class="rounded-2xl border border-[#e5e5e5] bg-white p-3 shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
+          <img
+            v-if="qrDataUri"
+            :src="qrDataUri"
+            alt="Payment QR code"
+            class="size-[min(42vw,180px)]"
+          >
+        </div>
       </div>
 
-      <div class="mt-auto pt-6 w-full">
+      <div class="shrink-0 space-y-2">
+        <div class="flex gap-2">
+          <Button
+            variant="outline"
+            class="h-9 flex-1 border-[#e5e5e5] bg-white text-[13px] shadow-none"
+            @click="copiedUri"
+          >
+            {{ t('copyUri') }}
+          </Button>
+          <Button
+            variant="outline"
+            class="h-9 flex-1 border-[#e5e5e5] bg-white text-[13px] shadow-none"
+            @click="copiedLink"
+          >
+            {{ t('copyPayLink') }}
+          </Button>
+        </div>
         <Button
           variant="outline"
-          class="w-full border-[#e5e5e5] bg-white shadow-none"
+          class="h-10 w-full border-[#e5e5e5] bg-white shadow-none"
           @click="cancelCheckout"
         >
           {{ t('cancel') }}
@@ -438,54 +405,46 @@ function playSuccessSound() {
       </div>
     </div>
 
-    <div v-else-if="state === 'success'" class="flex flex-1 flex-col items-center justify-center">
-      <div class="text-center">
-        <div class="inline-flex items-center justify-center rounded-full bg-[#16a34a] p-8 animate-[scale-in_0.4s_ease-out]">
-          <p class="text-[72px] leading-[1] font-bold text-white">
+    <!-- Success -->
+    <div v-else-if="state === 'success'" class="flex min-h-0 flex-1 flex-col">
+      <div class="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
+        <div class="inline-flex items-center justify-center rounded-full bg-[#16a34a] p-5 animate-[scale-in_0.4s_ease-out]">
+          <p class="text-[40px] leading-none font-bold text-white">
             ✓
           </p>
         </div>
-        <p class="mt-6 text-[40px] leading-[1.1] font-bold tracking-[-0.025em] text-[#16a34a]">
-          {{ formatUsdcFromBase(parsedAmount!) }} USDC
+        <p class="mt-4 text-[28px] font-bold tracking-[-0.025em] text-[#16a34a] tabular-nums">
+          {{ formatUsdcFromBase(parsedAmount ?? 0n) }}
+          <span class="text-[14px] font-medium">{{ IS_MOCK_USDC ? 'mUSDC' : 'USDC' }}</span>
         </p>
-        <p class="mt-3 text-[18px] leading-[1.4] font-semibold text-[#0a0a0a]">
+        <p class="mt-1 text-[15px] font-semibold">
           {{ t('checkoutSuccess') }}
         </p>
-        <p v-if="explorerHref" class="mt-4 text-[14px] leading-[1.43]">
+        <p v-if="explorerHref" class="mt-2 text-[13px]">
           <NuxtLink class="underline" :to="explorerHref" external>
             {{ t('explorer') }}
           </NuxtLink>
         </p>
       </div>
-
-      <div class="mt-auto pt-6 w-full">
-        <Button
-          class="w-full"
-          @click="startOver"
-        >
-          {{ t('checkoutAgain') }}
-        </Button>
-      </div>
+      <Button class="mt-2 h-10 w-full shrink-0" @click="startOver">
+        {{ t('checkoutAgain') }}
+      </Button>
     </div>
 
-    <div v-else-if="state === 'timeout'" class="flex flex-1 flex-col items-center justify-center">
-      <div class="text-center">
-        <p class="text-[36px] leading-[1.11] font-semibold tracking-[-0.025em]">
-          {{ formatUsdcFromBase(parsedAmount!) }} USDC
+    <!-- Timeout -->
+    <div v-else-if="state === 'timeout'" class="flex min-h-0 flex-1 flex-col">
+      <div class="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
+        <p class="text-[28px] font-semibold tabular-nums">
+          {{ formatUsdcFromBase(parsedAmount ?? 0n) }}
+          <span class="text-[14px] font-medium text-[#737373]">{{ IS_MOCK_USDC ? 'mUSDC' : 'USDC' }}</span>
         </p>
-        <p class="mt-2 text-[14px] leading-[1.43] text-[#737373]">
+        <p class="mt-2 text-[14px] text-[#737373]">
           {{ t('checkoutTimeout') }}
         </p>
       </div>
-
-      <div class="mt-auto pt-6 w-full">
-        <Button
-          class="w-full"
-          @click="startOver"
-        >
-          {{ t('checkoutAgain') }}
-        </Button>
-      </div>
+      <Button class="mt-2 h-10 w-full shrink-0" @click="startOver">
+        {{ t('checkoutAgain') }}
+      </Button>
     </div>
   </div>
 </template>
