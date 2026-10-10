@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Copy, Check } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { FAUCET_URL } from '~/lib/chain'
 import { shortTxHash } from '~/lib/activity'
@@ -22,6 +23,12 @@ definePageMeta({
 })
 
 const explorerBase = 'https://testnet.monadexplorer.com/tx/'
+
+const needsMockUsdc = computed(() =>
+  IS_MOCK_USDC
+  && account.hasSession
+  && (usdcBalance.value === undefined || usdcBalance.value === 0n),
+)
 
 async function copyAddress() {
   if (!account.address)
@@ -73,18 +80,22 @@ watch(() => account.address, () => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-8">
-    <div>
-      <h1 class="text-[36px] leading-[1.11] font-semibold tracking-[-0.025em]">
+  <div class="flex flex-col gap-6">
+    <!-- Balance card -->
+    <section class="rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
+      <p class="text-[13px] leading-[1.4] text-[#737373]">
+        {{ t('homeBalance') }}
+      </p>
+      <p class="mt-2 text-[36px] leading-[1.11] font-semibold tracking-[-0.025em] tabular-nums">
         <template v-if="account.balanceWei === undefined">
           —
         </template>
         <template v-else>
           {{ formatMon(account.balanceWei) }}
-          <span class="text-[18px] font-medium tracking-normal text-[#737373]">MON</span>
+          <span class="text-[16px] font-medium tracking-normal text-[#737373]">MON</span>
         </template>
-      </h1>
-      <p class="mt-2 text-[18px] font-medium tabular-nums text-[#0a0a0a]">
+      </p>
+      <p class="mt-1 text-[20px] font-medium tabular-nums text-[#0a0a0a]">
         <template v-if="usdcBalance === undefined">
           —
         </template>
@@ -93,44 +104,38 @@ watch(() => account.address, () => {
           <span class="text-[14px] font-medium text-[#737373]">{{ IS_MOCK_USDC ? 'mUSDC' : 'USDC' }}</span>
         </template>
       </p>
-      <p class="mt-3 text-[14px] leading-[1.43] text-[#737373]">
-        {{ account.address ? shortAddress(account.address) : '' }}
-      </p>
-    </div>
 
-    <div class="flex flex-col gap-2">
+      <div
+        v-if="account.address"
+        class="mt-4 flex items-center gap-1.5 text-[14px] leading-[1.43] text-[#737373]"
+      >
+        <span class="font-mono tabular-nums">{{ shortAddress(account.address) }}</span>
+        <button
+          type="button"
+          class="inline-flex size-7 items-center justify-center rounded-lg text-[#737373] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+          :aria-label="copied ? t('copied') : t('copy')"
+          @click="copyAddress"
+        >
+          <Check v-if="copied" class="size-3.5" :stroke-width="2" />
+          <Copy v-else class="size-3.5" :stroke-width="1.75" />
+        </button>
+      </div>
+    </section>
+
+    <!-- Quick actions -->
+    <div class="grid grid-cols-2 gap-2">
       <Button
-        class="w-full"
+        class="h-11 w-full"
         :aria-expanded="showReceive"
         @click="showReceive = !showReceive"
       >
         {{ showReceive ? t('hideReceive') : t('receive') }}
       </Button>
       <NuxtLink
-        class="flex h-10 items-center justify-center rounded-[18px] bg-[#0a0a0a] text-[14px] font-medium text-[#fafafa] hover:bg-[#0a0a0a]/90"
-        to="/checkout"
+        class="flex h-11 items-center justify-center rounded-[18px] border border-[#e5e5e5] bg-white text-[14px] font-medium text-[#0a0a0a] hover:bg-[#fafafa]"
+        to="/pay"
       >
-        {{ t('navCheckout') }}
-      </NuxtLink>
-      <Button variant="outline" class="w-full border-[#e5e5e5] bg-white shadow-none" @click="copyAddress">
-        {{ copied ? t('copied') : t('copy') }}
-      </Button>
-      <Button
-        v-if="IS_MOCK_USDC && account.hasSession"
-        variant="outline"
-        class="w-full border-[#e5e5e5] bg-white shadow-none"
-        :disabled="claimingUsdc"
-        @click="onClaimUsdc"
-      >
-        {{ claimingUsdc ? t('faucetClaiming') : t('faucetClaimMock') }}
-      </Button>
-      <NuxtLink
-        v-if="account.balanceWei === 0n"
-        class="flex h-10 items-center justify-center rounded-[18px] border border-[#e5e5e5] bg-white text-[14px] font-medium"
-        :to="FAUCET_URL"
-        external
-      >
-        {{ t('faucet') }}
+        {{ t('homeGoPay') }}
       </NuxtLink>
     </div>
 
@@ -139,20 +144,35 @@ watch(() => account.address, () => {
       :address="account.address"
     />
 
+    <!-- Only nudge claim when mUSDC empty -->
+    <div v-if="needsMockUsdc" class="rounded-[24px] border border-dashed border-[#e5e5e5] bg-[#fafafa] p-4">
+      <p class="text-[14px] leading-[1.43] text-[#737373]">
+        {{ t('homeNeedMockUsdc') }}
+      </p>
+      <Button
+        variant="outline"
+        class="mt-3 w-full border-[#e5e5e5] bg-white shadow-none"
+        :disabled="claimingUsdc"
+        @click="onClaimUsdc"
+      >
+        {{ claimingUsdc ? t('faucetClaiming') : t('faucetClaimMock') }}
+      </Button>
+      <p v-if="claimUsdcHash" class="mt-2 text-[13px] leading-[1.4] text-[#737373]">
+        {{ t('faucetClaimed') }}
+        <NuxtLink class="underline" :to="`${explorerBase}${claimUsdcHash}`" external>
+          {{ shortTxHash(claimUsdcHash) }}
+        </NuxtLink>
+      </p>
+      <p v-if="account.errorMessage === 'faucetClaimFailed'" class="mt-2 text-[13px] leading-[1.4] text-[#b91c1c]">
+        {{ t('faucetClaimFailed') }}
+      </p>
+    </div>
+
     <p v-if="account.balanceWei === 0n" class="text-[14px] leading-[1.43] text-[#737373]">
       {{ t('faucetNeed') }}
-    </p>
-    <p v-if="IS_MOCK_USDC" class="text-[14px] leading-[1.43] text-[#737373]">
-      {{ t('faucetMockHint') }}
-    </p>
-    <p v-if="claimUsdcHash" class="text-[14px] leading-[1.43] text-[#737373]">
-      {{ t('faucetClaimed') }}
-      <NuxtLink class="underline" :to="`${explorerBase}${claimUsdcHash}`" external>
-        {{ shortTxHash(claimUsdcHash) }}
+      <NuxtLink class="underline" :to="FAUCET_URL" external>
+        {{ t('faucet') }}
       </NuxtLink>
-    </p>
-    <p v-if="account.errorMessage === 'faucetClaimFailed'" class="text-[14px] leading-[1.43] text-[#b91c1c]">
-      {{ t('faucetClaimFailed') }}
     </p>
 
     <section class="rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
