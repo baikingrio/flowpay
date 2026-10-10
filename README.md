@@ -23,6 +23,22 @@ pnpm dev
 
 ---
 
+## Mock USDC（测试专用）
+
+产品默认使用自部署的 **Mock USDC（mUSDC）**，避免 Circle 测试网 USDC 不足。合约见 `contracts/MockUSDC.sol`：任意地址可 `claim()` 领 100 mUSDC（30 分钟冷却），也可用 `mint` 给演示账户打币。
+
+```bash
+# 部署到 Monad testnet（需有一点 MON 的私钥）
+forge create contracts/MockUSDC.sol:MockUSDC \
+  --rpc-url https://testnet-rpc.monad.xyz \
+  --private-key $DEPLOYER_PRIVATE_KEY
+```
+
+把部署地址写入 `app/lib/tokens.ts` 的 `USDC_ADDRESS`。MON 仍用 [Monad 水龙头](https://faucet.monad.xyz/) 或人工转入。
+
+
+---
+
 ## 演示场景
 
 **商家 USDC 收银台 + 顾客双设备支付**：

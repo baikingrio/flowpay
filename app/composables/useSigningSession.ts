@@ -10,7 +10,7 @@ import { clearPendingPayUri } from '~/lib/pending-pay-uri'
 import { shouldSetSessionExpired } from '~/lib/session-expiry'
 import type { SwapDirection } from '~/lib/swap'
 import { approveUsdc, calculateMinAmountOut, getAmountOut, getRouterAddress, readUsdcAllowance, swapExactETHForTokens, swapExactTokensForETH } from '~/lib/swap'
-import { readUsdcBalance, sendUsdcTransfer } from '~/lib/usdc'
+import { claimMockUsdc, readUsdcBalance, sendUsdcTransfer } from '~/lib/usdc'
 import { clearCheckoutLedger } from '~/lib/checkout-ledger'
 import { useAccountStore } from '~/stores/account'
 
@@ -238,5 +238,25 @@ export function useSigningSession() {
     lock()
   }
 
-  return { open, end: endSession, lock, signOut, refreshBalance, send, sendUsdc, swap, getUsdcBalance, getSwapQuote }
+
+  async function claimTestUsdc(): Promise<`0x${string}` | undefined> {
+    if (session === undefined)
+      return undefined
+    account.status = 'sending'
+    account.errorMessage = undefined
+    try {
+      const hash = await claimMockUsdc(session)
+      account.lastTxHash = hash
+      account.status = 'ready'
+      return hash
+    }
+    catch {
+      account.status = 'error'
+      account.errorMessage = 'faucetClaimFailed'
+      account.hasSession = session !== undefined
+      return undefined
+    }
+  }
+
+  return { open, end: endSession, lock, signOut, refreshBalance, send, sendUsdc, claimTestUsdc, swap, getUsdcBalance, getSwapQuote }
 }
