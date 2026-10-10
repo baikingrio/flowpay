@@ -49,11 +49,52 @@ export function toAppPayPath(uri: string): string {
   return `/pay?uri=${encodeURIComponent(uri)}`
 }
 
+/** Peel Flowpay HTTPS/relative pay links down to the inner ethereum: URI. */
+export function unwrapPaymentInput(input: string): string {
+  const raw = input.trim()
+  if (!raw)
+    return raw
+
+  try {
+    if (/^https?:\/\//i.test(raw)) {
+      const url = new URL(raw)
+      if (url.pathname === '/pay' || url.pathname.endsWith('/pay')) {
+        const uri = url.searchParams.get('uri')
+        if (uri)
+          return uri.trim()
+      }
+    }
+  }
+  catch {
+    // fall through
+  }
+
+  const relative = raw.startsWith('/pay?')
+    ? raw
+    : raw.startsWith('pay?')
+      ? `/${raw}`
+      : undefined
+  if (relative) {
+    try {
+      const url = new URL(relative, 'https://flowpay.local')
+      const uri = url.searchParams.get('uri')
+      if (uri)
+        return uri.trim()
+    }
+    catch {
+      // fall through
+    }
+  }
+
+  return raw
+}
+
+
 export function parsePaymentUri(
   input: string,
   expectedChainId: number = 10143,
 ): ParsePaymentUriResult {
-  const raw = input.trim()
+  const raw = unwrapPaymentInput(input)
   if (!raw)
     return { ok: false, error: 'invalid' }
 
@@ -155,7 +196,13 @@ function parseHexTarget(
       warnings,
     }
   }
-  if (t.includes('.') || /^[a-z0-9-]+$/i.test(t)) {
+  // ENS-like labels only — never treat URLs / paths as names.
+  if (
+    !t.includes('/')
+    && !t.includes(':')
+    && !t.includes('?')
+    && (t.includes('.') || /^[a-z0-9-]+$/i.test(t))
+  ) {
     return { ok: true, ensName: t, chainId, warnings }
   }
   return { ok: false, error: 'invalid' }
