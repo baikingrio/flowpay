@@ -33,7 +33,7 @@ function sessionStoreAsStorage(): Storage {
  *
  * These tests verify the stateless recovery system's contract:
  * 1. Continue is always tried first (continueThenCreate in app/lib/account.ts)
- * 2. Create only happens when Continue fails with instant NotAllowedError + no stored credential
+ * 2. Create happens when Continue fails/cancels with no stored credential (Safari hybrid sheet included)
  * 3. Stored credentialId is optional acceleration, never required for recovery
  * 4. signOut/clear-local removes all acceleration data but keeps the Passkey
  */
@@ -44,11 +44,11 @@ describe('stateless recovery contract', () => {
     mockSessionStorage.clear()
   })
 
-  it('documents instant fail threshold', () => {
-    // INSTANT_FAIL_MS = 400 in app/lib/account.ts
-    // If Continue fails < 400ms with no stored credential → assume no Passkey exists → Create
-    // If Continue fails >= 400ms or with stored credential → assume user cancel → do not Create
-    const INSTANT_FAIL_MS = 400
+  it('documents cancel-without-stored still creates', async () => {
+    // app/lib/account.ts: without stored credentialId, Continue cancel/fail → Create
+    // (Safari hybrid Sign In can take >400ms; do not treat that as final cancel.)
+    // With stored credentialId, Continue cancel → PasskeyCancelledError, no Create.
+    const { INSTANT_FAIL_MS } = await import('../app/lib/account')
     expect(INSTANT_FAIL_MS).toBe(400)
   })
 
