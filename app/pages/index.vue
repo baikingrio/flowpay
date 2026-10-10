@@ -22,7 +22,7 @@ const promises = [
 const steps = [
   { title: 'pathPasskeyTitle', body: 'pathPasskeyBody' },
   { title: 'pathPayTitle', body: 'pathPayBody' },
-  { title: 'pathSwapTitle', body: 'pathSwapBody' },
+  { title: 'pathCheckoutTitle', body: 'pathCheckoutBody' },
 ] as const
 
 const ctaClass = 'mt-10 h-11 w-full max-w-[280px] rounded-[18px] text-[14px] font-medium'

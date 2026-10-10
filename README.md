@@ -71,7 +71,7 @@ pnpm dev
 - Stateless 恢复（清存储后仅靠 Passkey 恢复）
 - 商家 USDC 收银台 + 顾客扫码支付（双设备）
 - 到账匹配 + 每日流水汇总
-- MON 转账 + Swap（Monad Testnet）
+- 当面 USDC 收银台 + Passkey 支付（Monad Testnet；Swap 已暂停）
 
 ### ⚠️ 已知限制
 - 无 Gas 赞助（需外部水龙头获取 MON）

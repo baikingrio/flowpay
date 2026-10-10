@@ -46,7 +46,7 @@ Flowpay — 像流水一样顺畅的链上支付与账户体验。
 - ✅ Mera 账户层集成（One-prompt + Signing Session + Stateless 恢复）
 - ✅ 商家 USDC 收银台（`/checkout`）+ 顾客扫码支付（`/pay`）双设备路径
 - ✅ 到账匹配与每日流水汇总
-- ✅ MON 转账 + Swap（测试网）
+- ✅ MON/USDC 支付与当面收银台（测试网；Swap 已暂停）
 - ✅ 响应式设计 + 会话状态可视化
 - ✅ 完整演示脚本（`docs/05-Demo-Script.md`）
 

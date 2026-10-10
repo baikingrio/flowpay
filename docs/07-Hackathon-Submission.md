@@ -61,7 +61,7 @@ Flowpay — 像流水一样顺畅的链上支付与账户体验。
 
 ### ✅ 基础支付与交易
 - [x] MON 转账（`/pay`）
-- [x] 简单 Swap（`/swap`，测试网 PuddleSwap，MON ↔ USDC）
+- [ ] ~~简单 Swap~~（已暂停/主导航隐藏，不作为演示卖点）
 - [x] 余额展示与交易历史
 
 ### ✅ 完整体验
@@ -164,7 +164,7 @@ Flowpay 是标准 Nuxt 4 应用，可部署到任何支持 Node.js 的平台。
    - 商家端显示到账 + 播放提示音 + 今日流水汇总更新
 
 4. **展示 Session 体验**（30 秒）  
-   "在会话有效期内，我可以连续再做一笔 Swap，无需重复刷脸。会话过期后，系统会清晰提示并要求重新验证。"
+   "在会话有效期内，我可以再收一笔或再付一笔，无需重复刷脸。会话过期后，系统会清晰提示并要求重新验证。"
 
 5. **现场 Stateless Test**（1 分钟，**关键加分**）  
    "现在我打开设置 → 点击『清除本机数据』→ 返回首页 → 再次点击『用 Face ID 继续』→ 同一 Passkey → 账户完整恢复。身份和访问能力完全从 Passkey 重建，不依赖本地敏感存储。"
@@ -200,6 +200,7 @@ Flowpay 是标准 Nuxt 4 应用，可部署到任何支持 Node.js 的平台。
 | [05-Demo-Script.md](./05-Demo-Script.md) | 评委演示脚本（含 Stateless Test） |
 | [06-Project-Overview.md](./06-Project-Overview.md) | 项目总览 |
 | **[07-Hackathon-Submission.md](./07-Hackathon-Submission.md)** | **本文件（评委快速浏览包）** |
+| [09-Submission-Checklist.md](./09-Submission-Checklist.md) | 截止前提交与真机演示 checklist |
 
 ---
 
