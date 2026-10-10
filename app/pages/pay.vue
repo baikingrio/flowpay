@@ -364,21 +364,21 @@ watch(() => account.hasSession, async (hasSession) => {
       </div>
     </div>
 
-    <div class="mt-2 grid min-h-0 flex-1 grid-cols-3 gap-1.5">
+    <div class="mt-3 shrink-0 grid grid-cols-3 gap-2 rounded-[24px] border border-[#e5e5e5] bg-white p-3 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
       <button
         v-for="key in keys"
         :key="key"
         type="button"
-        class="flex min-h-0 items-center justify-center rounded-2xl bg-[#f5f5f5] text-[17px] font-medium text-[#0a0a0a] outline-none active:scale-[0.98]"
+        class="flex h-11 items-center justify-center rounded-[18px] bg-[#f5f5f5] text-[18px] leading-none font-medium text-[#0a0a0a] transition-transform duration-150 ease-out outline-none hover:bg-[#ececec] focus-visible:ring-1 focus-visible:ring-[#e5e5e5] active:translate-y-px active:scale-[0.98]"
         :aria-label="key === 'back' ? t('payBackspace') : key === '.' ? t('payDecimal') : key"
         @click="pressKey(key)"
       >
-        <Delete v-if="key === 'back'" class="size-4" :stroke-width="1.75" />
+        <Delete v-if="key === 'back'" class="size-5" :stroke-width="1.75" />
         <span v-else>{{ key }}</span>
       </button>
     </div>
 
-    <div class="mt-2 shrink-0 space-y-1">
+    <div class="mt-auto shrink-0 space-y-1 pt-2">
       <p
         v-if="statusLine"
         class="truncate text-[12px] leading-[1.33]"
