@@ -24,7 +24,8 @@ export type OpenedAccount = {
   credentialId: string
 }
 
-const INSTANT_FAIL_MS = 400
+/** Kept for tests/docs: Safari hybrid Sign In often exceeds this; unused for !stored. */
+export const INSTANT_FAIL_MS = 400
 
 function isUserCancellation(error: unknown): boolean {
   let current: unknown = error
@@ -89,9 +90,15 @@ async function createWithPasskey(): Promise<OpenedAccount> {
 
 /**
  * Continue first, Create only when no Passkey is available.
- * Instant NotAllowedError with no stored credential is treated as "none"
- * (typical when the platform has no discoverable credential). A slower
- * NotAllowedError is treated as user cancel — we do not Create.
+ *
+ * With a stored credentialId: user cancel on Continue must not Create
+ * (would mint a new account).
+ *
+ * With no stored credentialId: Continue may open Safari's hybrid-only
+ * Sign In sheet (iPhone / security key) when no local discoverable
+ * Passkey exists. Canceling that sheet — even after hundreds of ms —
+ * must still fall through to Create so macOS Touch ID can register a
+ * platform Passkey. Instant-fail timing is no longer used to block Create.
  */
 export async function continueThenCreate(
   storedCredentialId?: string,
@@ -100,7 +107,6 @@ export async function continueThenCreate(
     ? { credentialId: storedCredentialId }
     : undefined
 
-  const started = Date.now()
   try {
     return await continueWithPasskey(stored)
   }
@@ -109,10 +115,10 @@ export async function continueThenCreate(
       throw error
     }
 
-    const elapsed = Date.now() - started
     const cancelled = isUserCancellation(error)
 
-    if (cancelled && (stored !== undefined || elapsed >= INSTANT_FAIL_MS)) {
+    // Only treat cancel as final when we already know which credential to use.
+    if (cancelled && stored !== undefined) {
       throw new PasskeyCancelledError()
     }
 
