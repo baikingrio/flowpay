@@ -86,6 +86,24 @@ const canPay = computed(() => {
 })
 
 
+const statusLine = computed(() =>
+  Boolean(
+    localError.value
+    || account.errorMessage
+    || insufficient.value
+    || insufficientGas.value
+    || localWarning.value
+    || (account.lastTxHash && explorerHref.value)
+    || (account.sessionExpired && !account.hasSession)
+    || account.balanceWei === 0n,
+  ),
+)
+const statusTone = computed(() =>
+  (localError.value || account.errorMessage || insufficient.value || insufficientGas.value) ? 'error' : 'muted',
+)
+
+
+
 function parseAmountText(raw: string, assetType: Asset): bigint | undefined {
   const cleaned = raw.endsWith('.') ? raw.slice(0, -1) : raw
   if (!cleaned || cleaned === '.')
@@ -296,10 +314,10 @@ watch(() => account.hasSession, async (hasSession) => {
           v-model="recipient"
           class="h-9 min-w-0 flex-1 rounded-2xl bg-[#f5f5f5] px-2.5 text-[13px] leading-[1.4] text-[#0a0a0a] outline-none placeholder:text-[#737373] focus:bg-transparent focus:ring-1 focus:ring-[#e5e5e5]"
           :placeholder="t('payToPlaceholder')"
+          :aria-label="t('payTo')"
           autocomplete="off"
           spellcheck="false"
           inputmode="text"
-          :aria-label="t('payTo')"
           @blur="applyRecipientIfPaymentInput"
           @keydown.enter.prevent
           @paste="onRecipientPaste"
@@ -346,7 +364,7 @@ watch(() => account.hasSession, async (hasSession) => {
       </div>
     </div>
 
-    <div class="mt-2 grid min-h-0 flex-1 grid-cols-3 gap-1.5 content-stretch">
+    <div class="mt-2 grid min-h-0 flex-1 grid-cols-3 gap-1.5">
       <button
         v-for="key in keys"
         :key="key"
@@ -356,17 +374,15 @@ watch(() => account.hasSession, async (hasSession) => {
         @click="pressKey(key)"
       >
         <Delete v-if="key === 'back'" class="size-4" :stroke-width="1.75" />
-        <template v-else>
-          {{ key }}
-        </template>
+        <span v-else>{{ key }}</span>
       </button>
     </div>
 
     <div class="mt-2 shrink-0 space-y-1">
       <p
-        v-if="localError || account.errorMessage || insufficient || insufficientGas || localWarning || (account.lastTxHash && explorerHref) || (account.sessionExpired && !account.hasSession) || account.balanceWei === 0n"
+        v-if="statusLine"
         class="truncate text-[12px] leading-[1.33]"
-        :class="(localError || account.errorMessage || insufficient || insufficientGas) ? 'text-[#e7000b]' : 'text-[#737373]'"
+        :class="statusTone === 'error' ? 'text-[#e7000b]' : 'text-[#737373]'"
       >
         <template v-if="localError || account.errorMessage">{{ t(localError || account.errorMessage || '') }}</template>
         <template v-else-if="insufficientGas">{{ t('insufficientGas') }}</template>
@@ -401,61 +417,5 @@ watch(() => account.hasSession, async (hasSession) => {
         {{ account.status === 'sending' ? t('sending') : t('send') }}
       </Button>
     </div>
-  </form>
-</template>
-        </button>
-      </div>
-
-      <p v-if="account.balanceWei === 0n" class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
-        {{ t('faucetNeed') }}
-      </p>
-      <NuxtLink
-        v-if="account.balanceWei === 0n"
-        class="mt-2 inline-flex h-10 items-center text-[14px] underline"
-        :to="FAUCET_URL"
-        external
-      >
-        {{ t('faucet') }}
-      </NuxtLink>
-      <p v-if="insufficientGas" class="mt-4 text-[14px] leading-[1.43] text-[#e7000b]">
-        {{ t('insufficientGas') }}
-      </p>
-      <p v-else-if="insufficient" class="mt-4 text-[14px] leading-[1.43] text-[#e7000b]">
-        {{ t(asset === 'usdc' ? 'insufficientUsdc' : 'insufficient') }}
-      </p>
-      <p v-if="account.lastTxHash && explorerHref" class="mt-4 text-[14px] leading-[1.43]">
-        {{ t('sent') }}
-        <NuxtLink class="underline" :to="explorerHref" external>
-          {{ t('explorer') }}
-        </NuxtLink>
-      </p>
-      <p v-if="account.sessionExpired && !account.hasSession" class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
-        {{ t('sessionExpiredPrompt') }}
-      </p>
-      <p v-if="localWarning" class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
-        {{ t(localWarning) }}
-      </p>
-      <p v-if="localError || account.errorMessage" class="mt-4 text-[14px] leading-[1.43] text-[#e7000b]">
-        {{ t(localError || account.errorMessage || '') }}
-      </p>
-    </div>
-
-    <Button
-      v-if="!account.hasSession"
-      class="mt-6 h-11 w-full bg-[#0a0a0a] text-[14px] font-medium text-[#fafafa] hover:bg-[#0a0a0a]/90"
-      type="button"
-      :disabled="account.status === 'opening'"
-      @click="open"
-    >
-      {{ account.status === 'opening' ? t('opening') : account.sessionExpired ? t('continue') : t('start') }}
-    </Button>
-    <Button
-      v-else
-      class="mt-6 h-11 w-full bg-[#0a0a0a] text-[14px] font-medium text-[#fafafa] hover:bg-[#0a0a0a]/90"
-      type="submit"
-      :disabled="!canPay || account.status === 'sending'"
-    >
-      {{ account.status === 'sending' ? t('sending') : t('send') }}
-    </Button>
   </form>
 </template>
