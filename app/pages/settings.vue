@@ -4,15 +4,34 @@ import { readAppAuth, clearAppAuth } from '~/lib/app-auth'
 import { clearBoundAddress } from '~/lib/bound-address'
 import { FAUCET_URL } from '~/lib/chain'
 import { shortAddress } from '~/lib/format'
+import { IS_MOCK_USDC } from '~/lib/tokens'
+import { shortTxHash } from '~/lib/activity'
 
 const { t, locale, setLocale } = useI18n()
 const account = useAccountStore()
-const { lock: lockSession, signOut } = useSigningSession()
+const { lock: lockSession, signOut, claimTestUsdc } = useSigningSession()
 const router = useRouter()
 const now = ref(Date.now())
 const showClearConfirm = ref(false)
 const copiedAddress = ref(false)
 const appAuth = ref<ReturnType<typeof readAppAuth>>()
+const claimingUsdc = ref(false)
+const claimUsdcHash = ref<`0x${string}` | undefined>(undefined)
+
+async function onClaimUsdc() {
+  if (claimingUsdc.value || !account.hasSession)
+    return
+  claimingUsdc.value = true
+  claimUsdcHash.value = undefined
+  try {
+    const hash = await claimTestUsdc()
+    if (hash)
+      claimUsdcHash.value = hash
+  }
+  finally {
+    claimingUsdc.value = false
+  }
+}
 
 definePageMeta({
   layout: 'shell',
@@ -282,6 +301,27 @@ onMounted(() => {
           >
             {{ t('faucet') }}
           </NuxtLink>
+          <Button
+            v-if="IS_MOCK_USDC && account.hasSession"
+            variant="outline"
+            class="h-10 w-full border-[#e5e5e5] bg-white shadow-none"
+            :disabled="claimingUsdc"
+            @click="onClaimUsdc"
+          >
+            {{ claimingUsdc ? t('faucetClaiming') : t('faucetClaimMock') }}
+          </Button>
+          <p v-if="claimUsdcHash" class="text-[13px] leading-[1.4] text-[#737373]">
+            {{ t('faucetClaimed') }}
+            <NuxtLink class="underline" :to="`${explorerBase}/tx/${claimUsdcHash}`" external>
+              {{ shortTxHash(claimUsdcHash) }}
+            </NuxtLink>
+          </p>
+          <p v-if="account.errorMessage === 'faucetClaimFailed'" class="text-[13px] leading-[1.4] text-[#b91c1c]">
+            {{ t('faucetClaimFailed') }}
+          </p>
+          <p v-if="IS_MOCK_USDC" class="text-[13px] leading-[1.4] text-[#737373]">
+            {{ t('faucetMockHint') }}
+          </p>
           <NuxtLink
             class="flex h-10 items-center justify-center rounded-[18px] border border-[#e5e5e5] bg-white text-[14px] font-medium hover:bg-[#fafafa]"
             :to="explorerBase"
