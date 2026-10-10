@@ -3,6 +3,8 @@
  *
  * Redirects to /home when accessing routes that are disabled by feature flags
  */
+import { useFeatureFlags } from '~/composables/useFeatureFlags'
+
 export default defineNuxtRouteMiddleware((to) => {
   // Only check on client
   if (import.meta.server)

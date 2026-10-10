@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ArrowLeftRight, House, Send } from '@lucide/vue'
+import { useFeatureFlags } from '~/composables/useFeatureFlags'
 
 const route = useRoute()
 const { t } = useI18n()
