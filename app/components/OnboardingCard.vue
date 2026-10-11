@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMonFaucet } from '~/composables/useMonFaucet'
 import { Check } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { shortTxHash } from '~/lib/activity'

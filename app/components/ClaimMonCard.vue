@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMonFaucet } from '~/composables/useMonFaucet'
 import { RECIPIENT_MAX_BALANCE_WEI } from '~~/shared/faucet'
 
 /** Shown while MON is (almost) empty, or right after a claim to confirm it. */
