@@ -75,7 +75,7 @@ User on a new device with the same Passkey (synced via iCloud Keychain, Windows 
 
 1. **Record your address**: note the address on the Home screen
 2. **Clear this browser**: click "Clear this browser" on the Home screen
-3. **Continue**: click "Continue with Face ID / Touch ID" on the landing page
+3. **Continue**: click "Get started" on the landing page
 4. **Verify**: the address matches, balance is fetched from RPC
 
 ## Technical details

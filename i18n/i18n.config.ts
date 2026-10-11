@@ -5,7 +5,7 @@ export default defineI18nConfig(() => ({
   messages: {
     'zh-CN': {
       tagline: '像普通 App 一样进入自托管支付——用一次 Face ID / 指纹，无需种子短语。',
-      start: '用 Face ID / 指纹开始',
+      start: '立即开始',
       startMockGithub: '用 GitHub 继续',
       mockDisclaimer: '⚠️ 模拟登录 · 非真实 GitHub OAuth',
       hint: '无种子短语 · 无钱包扩展 · 无托管',
@@ -201,7 +201,7 @@ export default defineI18nConfig(() => ({
     },
     en: {
       tagline: 'Self-custodied payments that feel like a normal app — one Face ID / Touch ID, no seed phrase.',
-      start: 'Continue with Face ID / Touch ID',
+      start: 'Get started',
       startMockGithub: 'Continue with GitHub',
       mockDisclaimer: '⚠️ Mock login · Not real GitHub OAuth',
       hint: 'No seed phrase · No extension · No custody',
