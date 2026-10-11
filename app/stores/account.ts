@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 
 import type { ActivityPayment } from '~/lib/activity'
 
-export type AccountStatus = 'idle' | 'opening' | 'ready' | 'sending' | 'error'
+export type AccountStatus = 'idle' | 'opening' | 'ready' | 'sending' | 'confirming' | 'error'
 
 export const useAccountStore = defineStore('account', {
   state: () => ({

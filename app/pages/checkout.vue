@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button'
 import { formatUsdcFromBase, parseUsdcToBase } from '~/lib/usdc-amount'
 import { IS_MOCK_USDC, USDC_ADDRESS } from '~/lib/tokens'
 import { clearCheckoutIntent, readCheckoutIntent, stashCheckoutIntent } from '~/lib/pending-checkout'
-import type { CheckoutIntent, TransferCandidate } from '~/lib/checkout-match'
-import { matchCheckoutTransfer } from '~/lib/checkout-match'
+import type { CheckoutIntent, TransferLog } from '~/lib/checkout-match'
+import { CHECKOUT_WINDOW_MS, LEGACY_LOOKBACK_BLOCKS, createRequestGate, matchTransferLog, newCheckoutRequestId, nextScanWindow, startBlockFor } from '~/lib/checkout-match'
 import { formatMon, getPublicClient, readBalance } from '~/lib/ledger'
 import { encodeQrDataUrl } from '~/lib/qr-encode'
 import { blockRanges } from '~/lib/block-ranges'
@@ -33,8 +33,12 @@ const paymentUri = ref('')
 const paymentLink = ref('')
 const qrDataUri = ref('')
 const matchedTxHash = ref<`0x${string}` | undefined>()
-const pollTimer = ref<ReturnType<typeof setInterval> | undefined>()
-const startBlockNumber = ref<bigint | undefined>()
+const POLL_INTERVAL_MS = 1500
+/** Live receive request; poll results for any other id are dropped. */
+const gate = createRequestGate()
+let pollTimer: ReturnType<typeof setTimeout> | undefined
+/** Last block already scanned for the active request (USDC only). */
+let scanCursor: bigint | undefined
 const ledgerTick = ref(0)
 const copied = ref<'address' | 'uri' | 'link'>()
 const starting = ref(false)
@@ -162,15 +166,19 @@ async function startCheckout() {
   startError.value = false
   try {
     let baselineWei: bigint | undefined
-    if (asset.value === 'mon') {
-      try {
-        baselineWei = await readBalance(to)
-      }
-      catch (error) {
-        console.error('Failed to read MON baseline:', error)
-        startError.value = true
-        return
-      }
+    let startBlock: bigint
+    try {
+      const [latest, baseline] = await Promise.all([
+        getPublicClient().getBlockNumber(),
+        asset.value === 'mon' ? readBalance(to) : Promise.resolve(undefined),
+      ])
+      startBlock = startBlockFor(latest)
+      baselineWei = baseline
+    }
+    catch (error) {
+      console.error('Failed to prepare receive request:', error)
+      startError.value = true
+      return
     }
 
     await renderCode(asset.value, to, amount)
@@ -182,12 +190,14 @@ async function startCheckout() {
       token: USDC_ADDRESS,
       asset: asset.value,
       baselineWei,
+      id: newCheckoutRequestId(),
+      startBlock,
     }
     stashCheckoutIntent(intent)
 
-    startBlockNumber.value = undefined
+    matchedTxHash.value = undefined
     state.value = 'pending'
-    startPolling()
+    startPolling(intent)
   }
   finally {
     starting.value = false
@@ -206,51 +216,89 @@ function backToKeypad() {
 }
 
 function startOver() {
+  stopPolling()
   state.value = 'idle'
   amountText.value = ''
   matchedTxHash.value = undefined
   clearCheckoutIntent()
 }
 
-function startPolling() {
+/** Self-scheduling loop: one poll in flight at a time, next one queued only after it finishes. */
+function startPolling(intent: CheckoutIntent) {
   stopPolling()
-  pollTimer.value = setInterval(async () => {
-    await checkForMatch()
-  }, 2000)
+  const id = intent.id ?? newCheckoutRequestId()
+  gate.begin(id)
+  scanCursor = intent.startBlock !== undefined ? intent.startBlock - 1n : undefined
+
+  const tick = async () => {
+    pollTimer = undefined
+    if (!gate.tryEnter(id))
+      return
+    try {
+      await pollOnce(intent, id)
+    }
+    finally {
+      gate.leave(id)
+    }
+    if (gate.isActive(id))
+      pollTimer = setTimeout(tick, POLL_INTERVAL_MS)
+  }
+  void tick()
 }
 
 function stopPolling() {
-  if (pollTimer.value !== undefined) {
-    clearInterval(pollTimer.value)
-    pollTimer.value = undefined
+  gate.end()
+  if (pollTimer !== undefined) {
+    clearTimeout(pollTimer)
+    pollTimer = undefined
   }
+  scanCursor = undefined
 }
 
-function markSuccess(intent: CheckoutIntent, hash?: `0x${string}`) {
+function markSuccess(id: string, intent: CheckoutIntent, hash?: `0x${string}`) {
+  // Idempotent: only the first result for the live request lands.
+  if (!gate.claimSuccess(id))
+    return
+  const known = hash
+    ? readCheckoutLedger(intent.expectedTo).some(entry => entry.hash?.toLowerCase() === hash.toLowerCase())
+    : false
+  if (!known) {
+    recordCheckoutReceipt(intent.expectedTo, {
+      hash,
+      token: receiptTokenFor(intent.asset ?? 'usdc'),
+      amountBase: intent.amountBase,
+      to: intent.expectedTo,
+      status: 'success',
+    })
+  }
   matchedTxHash.value = hash
-  recordCheckoutReceipt(intent.expectedTo, {
-    hash,
-    token: receiptTokenFor(intent.asset ?? 'usdc'),
-    amountBase: intent.amountBase,
-    to: intent.expectedTo,
-    status: 'success',
-  })
   ledgerTick.value++
   state.value = 'success'
   playSuccessSound()
+  navigator.vibrate?.(30)
   stopPolling()
   clearCheckoutIntent()
 }
 
-async function checkForMatch() {
-  const intent = readCheckoutIntent()
-  if (!intent || !account.address)
+const TRANSFER_EVENT = {
+  type: 'event',
+  name: 'Transfer',
+  inputs: [
+    { type: 'address', indexed: true, name: 'from' },
+    { type: 'address', indexed: true, name: 'to' },
+    { type: 'uint256', indexed: false, name: 'value' },
+  ],
+} as const
+
+async function pollOnce(intent: CheckoutIntent, id: string) {
+  if (!account.address)
     return
 
-  const nowMs = Date.now()
-  if (nowMs > intent.startedAt + 300_000) {
-    stopPolling()
-    state.value = 'timeout'
+  if (Date.now() > intent.startedAt + CHECKOUT_WINDOW_MS) {
+    if (gate.isActive(id)) {
+      stopPolling()
+      state.value = 'timeout'
+    }
     return
   }
 
@@ -259,62 +307,53 @@ async function checkForMatch() {
       if (intent.baselineWei === undefined)
         return
       const currentWei = await readBalance(intent.expectedTo)
-      if (matchNativeArrival({ baselineWei: intent.baselineWei, currentWei, amountWei: intent.amountBase }))
-        markSuccess(intent)
+      if (gate.isActive(id) && matchNativeArrival({ baselineWei: intent.baselineWei, currentWei, amountWei: intent.amountBase }))
+        markSuccess(id, intent)
       return
     }
 
     const client = getPublicClient()
+    const latest = await client.getBlockNumber()
+    if (!gate.isActive(id))
+      return
+    const startBlock = intent.startBlock ?? (latest > LEGACY_LOOKBACK_BLOCKS ? latest - LEGACY_LOOKBACK_BLOCKS : 0n)
+    if (scanCursor === undefined)
+      scanCursor = startBlock - 1n
+    const scan = nextScanWindow(scanCursor, latest)
+    if (!scan)
+      return
 
-    if (!startBlockNumber.value) {
-      const latestBlock = await client.getBlockNumber()
-      const lookbackBlocks = 2000n
-      startBlockNumber.value = latestBlock > lookbackBlocks ? latestBlock - lookbackBlocks : 0n
-    }
+    const knownHashes = new Set(
+      readCheckoutLedger(intent.expectedTo)
+        .map(entry => entry.hash?.toLowerCase())
+        .filter((hash): hash is `0x${string}` => Boolean(hash)),
+    )
 
-    const latestBlock = await client.getBlockNumber()
-    const ranges = blockRanges(startBlockNumber.value, latestBlock, 100)
-
-    const candidates: TransferCandidate[] = []
-
-    for (const [fromBlock, toBlock] of ranges) {
-      try {
-        const logs = await client.getLogs({
-          address: USDC_ADDRESS,
-          event: {
-            type: 'event',
-            name: 'Transfer',
-            inputs: [
-              { type: 'address', indexed: true, name: 'from' },
-              { type: 'address', indexed: true, name: 'to' },
-              { type: 'uint256', indexed: false, name: 'value' },
-            ],
-          },
-          args: {
-            to: intent.expectedTo,
-          },
-          fromBlock,
-          toBlock,
-        })
-
-        for (const log of logs) {
-          const block = await client.getBlock({ blockHash: log.blockHash! })
-          candidates.push({
-            hash: log.transactionHash!,
-            to: log.args.to!,
-            value: log.args.value!,
-            timestampMs: Number(block.timestamp) * 1000,
-          })
-        }
+    for (const [fromBlock, toBlock] of blockRanges(scan.from, scan.to, 100)) {
+      const logs = await client.getLogs({
+        address: USDC_ADDRESS,
+        event: TRANSFER_EVENT,
+        args: { to: intent.expectedTo },
+        fromBlock,
+        toBlock,
+      })
+      // Request cancelled / replaced while we waited: drop this result.
+      if (!gate.isActive(id))
+        return
+      const candidates: TransferLog[] = logs.map(log => ({
+        hash: log.transactionHash!,
+        to: log.args.to!,
+        value: log.args.value!,
+        blockNumber: log.blockNumber!,
+      }))
+      const match = matchTransferLog(intent, candidates, startBlock, knownHashes)
+      if (match) {
+        markSuccess(id, intent, match.hash)
+        return
       }
-      catch (chunkError) {
-        console.error(`Failed to fetch logs for blocks ${fromBlock}-${toBlock}:`, chunkError)
-      }
+      // Only advance past blocks that were actually scanned; a failed chunk is retried next poll.
+      scanCursor = toBlock
     }
-
-    const match = matchCheckoutTransfer(intent, candidates, nowMs)
-    if (match)
-      markSuccess(intent, match.hash)
   }
   catch (error) {
     console.error('Poll error:', error)
@@ -350,7 +389,7 @@ onMounted(async () => {
     amountText.value = formatAmount(intent.amountBase, kind)
     await renderCode(kind, intent.expectedTo, intent.amountBase)
     state.value = 'pending'
-    startPolling()
+    startPolling(intent)
   }
   ledgerTick.value++
 })

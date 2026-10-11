@@ -13,6 +13,8 @@ export function stashCheckoutIntent(
     token: intent.token,
     asset: intent.asset,
     baselineWei: intent.baselineWei?.toString(),
+    id: intent.id,
+    startBlock: intent.startBlock?.toString(),
   }
   storage.setItem(KEY, JSON.stringify(payload))
 }
@@ -32,6 +34,8 @@ export function readCheckoutIntent(
       token: payload.token,
       asset: payload.asset === 'mon' ? 'mon' : 'usdc',
       baselineWei: typeof payload.baselineWei === 'string' ? BigInt(payload.baselineWei) : undefined,
+      id: typeof payload.id === 'string' ? payload.id : undefined,
+      startBlock: typeof payload.startBlock === 'string' ? BigInt(payload.startBlock) : undefined,
     }
   }
   catch {

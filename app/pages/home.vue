@@ -16,6 +16,15 @@ const copied = ref(false)
 const usdcBalance = ref<bigint | undefined>(undefined)
 const claimingUsdc = ref(false)
 const claimUsdcHash = ref<`0x${string}` | undefined>(undefined)
+const claimLabel = computed(() => {
+  if (!claimingUsdc.value)
+    return t('faucetClaimMock')
+  if (account.status === 'opening')
+    return t('payVerifying')
+  if (account.status === 'confirming')
+    return t('payConfirming')
+  return t('faucetClaiming')
+})
 
 definePageMeta({
   layout: 'shell',
@@ -61,6 +70,7 @@ async function onClaimUsdc() {
     const hash = await claimTestUsdc()
     if (hash) {
       claimUsdcHash.value = hash
+      navigator.vibrate?.(30)
       await refreshUsdc()
     }
   }
@@ -137,20 +147,21 @@ watch(() => account.address, () => {
     </div>
 
     <!-- Only nudge claim when mUSDC empty -->
-    <div v-if="needsMockUsdc" class="rounded-[24px] border border-dashed border-[#e5e5e5] bg-[#fafafa] p-4">
-      <p class="text-[14px] leading-[1.43] text-[#737373]">
+    <div v-if="needsMockUsdc || claimUsdcHash" class="rounded-[24px] border border-dashed border-[#e5e5e5] bg-[#fafafa] p-4">
+      <p v-if="needsMockUsdc" class="text-[14px] leading-[1.43] text-[#737373]">
         {{ t('homeNeedMockUsdc') }}
       </p>
       <Button
+        v-if="needsMockUsdc"
         variant="outline"
         class="mt-3 w-full border-[#e5e5e5] bg-white shadow-none"
         :disabled="claimingUsdc"
         @click="onClaimUsdc"
       >
-        {{ claimingUsdc ? t('faucetClaiming') : t('faucetClaimMock') }}
+        {{ claimLabel }}
       </Button>
-      <p v-if="claimUsdcHash" class="mt-2 text-[13px] leading-[1.4] text-[#737373]">
-        {{ t('faucetClaimed') }}
+      <p v-if="claimUsdcHash" class="text-[13px] leading-[1.4] text-[#16a34a]" role="status">
+        <span class="font-medium">{{ t('faucetClaimedAmount', { amount: '100', token: 'mUSDC' }) }}</span> ·
         <NuxtLink class="underline" :to="`${explorerBase}${claimUsdcHash}`" external>
           {{ shortTxHash(claimUsdcHash) }}
         </NuxtLink>

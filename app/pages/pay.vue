@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Delete } from '@lucide/vue'
+import { Check, Delete } from '@lucide/vue'
 import { isAddress, parseEther, type Address } from 'viem'
 import { Button } from '@/components/ui/button'
 import { FAUCET_URL } from '~/lib/chain'
@@ -30,6 +30,25 @@ const localError = ref<string | undefined>()
 const localWarning = ref<string | undefined>()
 const externalPrefill = ref(false)
 const toField = ref<HTMLInputElement | null>(null)
+
+interface PaySuccess {
+  hash: `0x${string}`
+  amount: string
+  token: string
+  to: Address
+}
+/** Set after a confirmed send; replaces the keypad with a success card. */
+const success = ref<PaySuccess | undefined>()
+const busy = computed(() =>
+  account.status === 'opening' || account.status === 'sending' || account.status === 'confirming',
+)
+const busyLabel = computed(() => {
+  if (account.status === 'opening')
+    return t('payVerifying')
+  if (account.status === 'confirming')
+    return t('payConfirming')
+  return t('sending')
+})
 
 const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'] as const
 
@@ -62,10 +81,8 @@ const recentRecipients = computed(() => {
     })
     .slice(0, 5)
 })
-const explorerHref = computed(() =>
-  account.lastTxHash
-    ? `https://testnet.monadexplorer.com/tx/${account.lastTxHash}`
-    : undefined,
+const successExplorerHref = computed(() =>
+  success.value ? `https://testnet.monadexplorer.com/tx/${success.value.hash}` : undefined,
 )
 const insufficient = computed(() => {
   if (parsedAmount.value === undefined)
@@ -93,8 +110,6 @@ const statusLine = computed(() =>
     || insufficient.value
     || insufficientGas.value
     || localWarning.value
-    || (account.lastTxHash && explorerHref.value)
-    || false
     || account.balanceWei === 0n,
   ),
 )
@@ -252,13 +267,49 @@ async function onSend() {
     localError.value = asset.value === 'usdc' ? 'insufficientUsdc' : 'insufficient'
     return
   }
+  if (busy.value)
+    return
+  const to = parsedRecipient.value
+  const amount = amountText.value.endsWith('.') ? amountText.value.slice(0, -1) : amountText.value
+  const token = assetLabel.value
+  const hash = asset.value === 'usdc'
+    ? await sendUsdc(to, parsedAmount.value)
+    : await send(to, parsedAmount.value)
+  if (!hash)
+    return
+  success.value = { hash, amount, token, to }
+  navigator.vibrate?.(30)
   if (asset.value === 'usdc')
-    await sendUsdc(parsedRecipient.value, parsedAmount.value)
-  else
-    await send(parsedRecipient.value, parsedAmount.value)
+    usdcBalance.value = await getUsdcBalance().catch(() => usdcBalance.value)
+}
+
+/** 完成: clear everything and go home. */
+async function onDone() {
+  resetForm()
+  await navigateTo('/home')
+}
+
+/** 再付一笔: same recipient and token, fresh amount. */
+function onPayAgain() {
+  success.value = undefined
+  amountText.value = ''
+  localError.value = undefined
+  localWarning.value = undefined
+  externalPrefill.value = false
+}
+
+function resetForm() {
+  success.value = undefined
+  recipient.value = ''
+  amountText.value = ''
+  localError.value = undefined
+  localWarning.value = undefined
+  externalPrefill.value = false
 }
 
 function onWindowKey(event: KeyboardEvent) {
+  if (success.value || busy.value)
+    return
   if (document.activeElement === toField.value)
     return
   if (event.key >= '0' && event.key <= '9') {
@@ -286,6 +337,11 @@ function onWindowKey(event: KeyboardEvent) {
 
 onMounted(async () => {
   window.addEventListener('keydown', onWindowKey)
+  // Don't carry a stale error from another page (e.g. a failed claim) into pay.
+  if (account.status === 'error') {
+    account.status = 'idle'
+    account.errorMessage = undefined
+  }
   const fromQuery = typeof route.query.uri === 'string' ? route.query.uri : undefined
   const pending = fromQuery ?? readPendingPayUri()
   if (pending) {
@@ -310,7 +366,55 @@ watch(() => account.address, async (address) => {
 </script>
 
 <template>
+  <!-- Success: replaces the form, same one-screen frame -->
+  <div
+    v-if="success"
+    class="flex h-[calc(100dvh-160px)] max-h-[calc(100dvh-160px)] flex-col overflow-hidden"
+    role="status"
+    aria-live="polite"
+  >
+    <div class="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
+      <div class="inline-flex size-16 items-center justify-center rounded-full bg-[#16a34a] animate-[pay-pop_0.4s_ease-out]">
+        <Check class="size-8 text-white" :stroke-width="2.5" />
+      </div>
+      <p class="mt-4 text-[15px] font-semibold">
+        {{ t('paySuccessTitle') }}
+      </p>
+      <p class="mt-1 text-[32px] leading-[1.1] font-semibold tracking-[-0.04em] tabular-nums">
+        {{ success.amount }}
+        <span class="ml-1 text-[14px] font-medium tracking-normal text-[#737373]">{{ success.token }}</span>
+      </p>
+      <p class="mt-2 text-[13px] text-[#737373]">
+        {{ t('paySuccessTo') }}
+        <span class="font-mono tabular-nums text-[#0a0a0a]" :title="success.to">{{ shortAddress(success.to) }}</span>
+      </p>
+      <p v-if="successExplorerHref" class="mt-2 text-[13px]">
+        <NuxtLink class="underline" :to="successExplorerHref" external>
+          {{ t('explorer') }}
+        </NuxtLink>
+      </p>
+    </div>
+    <div class="shrink-0 space-y-2 pt-2">
+      <Button
+        class="h-10 w-full bg-[#0a0a0a] text-[14px] font-medium text-[#fafafa] hover:bg-[#0a0a0a]/90"
+        type="button"
+        @click="onDone"
+      >
+        {{ t('payDone') }}
+      </Button>
+      <Button
+        variant="outline"
+        class="h-10 w-full border-[#e5e5e5] bg-white shadow-none"
+        type="button"
+        @click="onPayAgain"
+      >
+        {{ t('payAgain') }}
+      </Button>
+    </div>
+  </div>
+
   <form
+    v-else
     class="flex h-[calc(100dvh-160px)] max-h-[calc(100dvh-160px)] flex-col overflow-hidden"
     @submit.prevent="onSend"
   >
@@ -396,11 +500,6 @@ watch(() => account.address, async (address) => {
         <template v-else-if="insufficientGas">{{ t('insufficientGas') }}</template>
         <template v-else-if="insufficient">{{ t(asset === 'usdc' ? 'insufficientUsdc' : 'insufficient') }}</template>
         <template v-else-if="localWarning">{{ t(localWarning) }}</template>
-        <template v-else-if="account.lastTxHash && explorerHref">
-          {{ t('sent') }}
-          <NuxtLink class="underline" :to="explorerHref" external>{{ t('explorer') }}</NuxtLink>
-        </template>
-        <template v-else-if="false">{{ t('sessionExpiredPrompt') }}</template>
         <template v-else-if="account.balanceWei === 0n">
           {{ t('faucetNeed') }}
           <NuxtLink class="underline" :to="FAUCET_URL" external>{{ t('faucet') }}</NuxtLink>
@@ -420,10 +519,26 @@ watch(() => account.address, async (address) => {
         v-else
         class="h-10 w-full bg-[#0a0a0a] text-[14px] font-medium text-[#fafafa] hover:bg-[#0a0a0a]/90"
         type="submit"
-        :disabled="!canPay || account.status === 'sending'"
+        :disabled="!canPay || busy"
       >
-        {{ account.status === 'sending' ? t('sending') : t('send') }}
+        {{ busy ? busyLabel : t('send') }}
       </Button>
     </div>
   </form>
 </template>
+
+<style scoped>
+@keyframes pay-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+</style>
