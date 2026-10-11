@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeftRight, House, Send, Store } from '@lucide/vue'
+import { ArrowLeftRight, House, QrCode, Send } from '@lucide/vue'
 import { useFeatureFlags } from '~/composables/useFeatureFlags'
 
 const route = useRoute()
@@ -10,7 +10,7 @@ const tabs = computed(() => {
   const allTabs = [
     { to: '/home', label: t('navHome'), icon: House },
     { to: '/pay', label: t('navPay'), icon: Send },
-    { to: '/checkout', label: t('navCheckout'), icon: Store },
+    { to: '/checkout', label: t('navCheckout'), icon: QrCode },
     { to: '/swap', label: t('navSwap'), icon: ArrowLeftRight, requiresFlag: 'swap' as const },
   ]
   // Filter out tabs that require feature flags when the flag is disabled

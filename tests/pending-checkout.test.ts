@@ -19,7 +19,27 @@ describe('pending checkout storage', () => {
 
     stashCheckoutIntent(intent, storage)
     const read = readCheckoutIntent(storage)
-    expect(read).toEqual(intent)
+    expect(read).toEqual({ ...intent, asset: 'usdc' })
+  })
+
+  it('round-trips MON intent with baseline balance', () => {
+    const mockStorage = new Map<string, string>()
+    const storage = {
+      getItem: (key: string) => mockStorage.get(key) ?? null,
+      setItem: (key: string, value: string) => mockStorage.set(key, value),
+      removeItem: (key: string) => mockStorage.delete(key),
+    } as Storage
+
+    const intent = {
+      expectedTo: '0x0000000000000000000000000000000000000001' as const,
+      amountBase: 10n ** 17n,
+      startedAt: 1000,
+      token: '0x534b2f3A21130d7a60830c2Df862319e593943A3' as const,
+      asset: 'mon' as const,
+      baselineWei: 123n * 10n ** 18n,
+    }
+    stashCheckoutIntent(intent, storage)
+    expect(readCheckoutIntent(storage)).toEqual(intent)
   })
 
   it('returns undefined when no intent stored', () => {

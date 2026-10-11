@@ -3,7 +3,7 @@ import { Delete } from '@lucide/vue'
 import { isAddress, parseEther, type Address } from 'viem'
 import { Button } from '@/components/ui/button'
 import { FAUCET_URL } from '~/lib/chain'
-import { parsePaymentUri, type ParsePaymentUriFailure } from '~/lib/eip681'
+import { parsePaymentUri, unwrapPaymentInput, type ParsePaymentUriFailure } from '~/lib/eip681'
 import { resolveEnsName } from '~/lib/ens'
 import { shortAddress } from '~/lib/format'
 import { formatMon } from '~/lib/ledger'
@@ -171,17 +171,25 @@ async function applyPaymentInput(raw: string): Promise<void> {
   recipient.value = address
   externalPrefill.value = true
 
-  if (parsed.tokenAddress && parsed.tokenAmount !== undefined) {
+  if (parsed.tokenAddress) {
     if (parsed.tokenAddress.toLowerCase() !== USDC_ADDRESS.toLowerCase()) {
       localError.value = 'unsupportedToken'
       return
     }
+    // Any-amount ERC-20 request (no uint256): pick USDC, payer types the amount.
+    if (asset.value !== 'usdc' || parsed.tokenAmount !== undefined)
+      amountText.value = parsed.tokenAmount !== undefined ? formatUsdcFromBase(parsed.tokenAmount) : ''
     asset.value = 'usdc'
-    amountText.value = formatUsdcFromBase(parsed.tokenAmount)
   }
   else if (parsed.valueWei !== undefined) {
     asset.value = 'mon'
     amountText.value = formatMon(parsed.valueWei)
+  }
+  else if (unwrapPaymentInput(raw).toLowerCase().startsWith('ethereum:')) {
+    // Native EIP-681 request without value = "any amount" MON request.
+    if (asset.value !== 'mon')
+      amountText.value = ''
+    asset.value = 'mon'
   }
 
   for (const warning of parsed.warnings) {

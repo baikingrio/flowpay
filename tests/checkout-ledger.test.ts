@@ -3,8 +3,10 @@ import type { CheckoutReceipt } from '../app/lib/checkout-ledger'
 import {
   clearCheckoutLedger,
   exportReceiptsAsCSV,
+  formatReceiptAmount,
   isSameLocalDay,
   readCheckoutLedger,
+  receiptToken,
   recordCheckoutReceipt,
   summarizeToday,
 } from '../app/lib/checkout-ledger'
@@ -186,6 +188,7 @@ describe('summarizeToday', () => {
     expect(summary).toEqual({
       count: 0,
       totalBase: 0n,
+      totalMonWei: 0n,
       items: [],
     })
   })
@@ -239,7 +242,7 @@ describe('exportReceiptsAsCSV', () => {
 
   it('exports empty CSV with header', () => {
     const csv = exportReceiptsAsCSV([])
-    expect(csv).toContain('Timestamp,Amount (USDC),Status,Transaction Hash,Merchant Address')
+    expect(csv).toContain('Timestamp,Token,Amount,Status,Transaction Hash,Merchant Address')
     const lines = csv.split('\n').filter(line => line.trim() !== '')
     expect(lines).toHaveLength(1) // Only header, no data rows
   })
@@ -266,7 +269,7 @@ describe('exportReceiptsAsCSV', () => {
     const lines = csv.split('\n')
 
     expect(lines).toHaveLength(3) // Header + 2 rows
-    expect(lines[0]).toContain('Timestamp,Amount (USDC),Status,Transaction Hash,Merchant Address')
+    expect(lines[0]).toContain('Timestamp,Token,Amount,Status,Transaction Hash,Merchant Address')
     expect(lines[1]).toContain('10.000000')
     expect(lines[1]).toContain('success')
     expect(lines[1]).toContain('0xabc123')
@@ -314,5 +317,71 @@ describe('exportReceiptsAsCSV', () => {
 
     const csv = exportReceiptsAsCSV(receipts)
     expect(csv).toContain('N/A')
+  })
+})
+
+describe('token field (USDC + MON)', () => {
+  const testAddress = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb' as `0x${string}`
+  let storage: Map<string, string>
+  const mockStorage: Storage = {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => { storage.set(key, value) },
+    removeItem: (key: string) => { storage.delete(key) },
+    clear: () => { storage.clear() },
+    key: (index: number) => Array.from(storage.keys())[index] ?? null,
+    get length() { return storage.size },
+  }
+
+  beforeEach(() => {
+    storage = new Map()
+  })
+
+  it('treats legacy entries without token as USDC', () => {
+    storage.set(
+      `flowpay.checkoutLedger.${testAddress.toLowerCase()}`,
+      JSON.stringify([{ hash: '0xabc', amountBase: '1000000', receivedAt: 1, status: 'success' }]),
+    )
+    const entries = readCheckoutLedger(testAddress, mockStorage)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.token).toBe('USDC')
+    expect(receiptToken(entries[0]!)).toBe('USDC')
+  })
+
+  it('records MON receipts without a hash and never dedupes them', () => {
+    recordCheckoutReceipt(testAddress, { token: 'MON', amountBase: 10n ** 17n, status: 'success' }, mockStorage)
+    const entries = recordCheckoutReceipt(testAddress, { token: 'MON', amountBase: 10n ** 17n, status: 'success' }, mockStorage)
+    expect(entries).toHaveLength(2)
+    const readBack = readCheckoutLedger(testAddress, mockStorage)
+    expect(readBack).toHaveLength(2)
+    expect(readBack[0]?.token).toBe('MON')
+    expect(readBack[0]?.hash).toBeUndefined()
+  })
+
+  it('summarizes per-token totals', () => {
+    const now = new Date('2026-09-11T15:00:00').getTime()
+    const at = new Date('2026-09-11T10:00:00').getTime()
+    const summary = summarizeToday([
+      { hash: '0xa', amountBase: 2_000_000n, receivedAt: at, status: 'success' },
+      { hash: '0xb', token: 'USDC', amountBase: 500_000n, receivedAt: at, status: 'success' },
+      { token: 'MON', amountBase: 3n * 10n ** 17n, receivedAt: at, status: 'success' },
+    ], now)
+    expect(summary.count).toBe(3)
+    expect(summary.totalBase).toBe(2_500_000n)
+    expect(summary.totalMonWei).toBe(3n * 10n ** 17n)
+  })
+
+  it('exports token column and exact MON amount', () => {
+    const csv = exportReceiptsAsCSV([
+      { token: 'MON', amountBase: 1_500_000_000_000_000_001n, receivedAt: Date.now(), status: 'success', to: testAddress },
+      { hash: '0xdef', amountBase: 2_000_000n, receivedAt: Date.now(), status: 'success' },
+    ])
+    const lines = csv.split('\n')
+    expect(lines[1]).toContain('"MON","1.500000000000000001","success","",')
+    expect(lines[2]).toContain('"USDC","2.000000","success","0xdef"')
+  })
+
+  it('formats receipt amounts exactly', () => {
+    expect(formatReceiptAmount({ amountBase: 1_234_567n })).toBe('1.234567')
+    expect(formatReceiptAmount({ token: 'MON', amountBase: 10n ** 18n })).toBe('1')
   })
 })
