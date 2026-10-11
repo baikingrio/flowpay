@@ -130,4 +130,21 @@ export async function continueThenCreate(
   }
 }
 
+/**
+ * Passkey assertion for a single signing action. Never creates a new Passkey.
+ * With a stored credentialId the platform goes straight to Touch ID / Face ID.
+ */
+export async function unlockForSigning(storedCredentialId?: string): Promise<OpenedAccount> {
+  try {
+    return await continueWithPasskey(
+      storedCredentialId ? { credentialId: storedCredentialId } : undefined,
+    )
+  }
+  catch (error) {
+    if (isUserCancellation(error))
+      throw new PasskeyCancelledError()
+    throw error
+  }
+}
+
 export { isMeraError, MeraError }

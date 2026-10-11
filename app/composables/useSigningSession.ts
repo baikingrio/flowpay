@@ -1,70 +1,45 @@
 import type { Secp256k1SigningSession } from '@category-labs/mera'
 
 import { clearAppAuth } from '~/lib/app-auth'
-import { clearBoundAddress } from '~/lib/bound-address'
+import { clearBoundAddress, writeBoundAddress } from '~/lib/bound-address'
 import { clearActivity, readActivity, recordPayment } from '~/lib/activity'
-import { continueThenCreate, isMeraError, PasskeyCancelledError } from '~/lib/account'
+import { continueThenCreate, isMeraError, PasskeyCancelledError, unlockForSigning } from '~/lib/account'
 import { clearStoredCredentialId, readStoredCredentialId, writeStoredCredentialId } from '~/lib/credential'
 import { readBalance, sendPayment } from '~/lib/ledger'
 import { clearPendingPayUri } from '~/lib/pending-pay-uri'
-import { shouldSetSessionExpired } from '~/lib/session-expiry'
 import type { SwapDirection } from '~/lib/swap'
 import { approveUsdc, calculateMinAmountOut, getAmountOut, getRouterAddress, readUsdcAllowance, swapExactETHForTokens, swapExactTokensForETH } from '~/lib/swap'
 import { claimMockUsdc, readUsdcBalance, sendUsdcTransfer } from '~/lib/usdc'
 import { clearCheckoutLedger } from '~/lib/checkout-ledger'
 import { useAccountStore } from '~/stores/account'
 
-const SESSION_MS = 10 * 60 * 1000
+/**
+ * Account model (2026-10-11): no login session.
+ * - The address is remembered locally after the first Passkey create/continue.
+ * - Reading balances, history and receiving (checkout) never needs biometrics.
+ * - Every signing action (send, claim, swap) runs its own Passkey prompt,
+ *   derives the key in memory, signs, and immediately ends the session.
+ */
 
-let session: Secp256k1SigningSession | undefined
-let expiresTimer: ReturnType<typeof setTimeout> | undefined
-let pagehideBound = false
-/** True while a Passkey ceremony / open() is in flight — ignore pagehide from the OS sheet. */
-let opening = false
-
-function clearTimer(): void {
-  if (expiresTimer !== undefined) {
-    clearTimeout(expiresTimer)
-    expiresTimer = undefined
+class PasskeyMismatchError extends Error {
+  constructor() {
+    super('Passkey does not match this account')
+    this.name = 'PasskeyMismatchError'
   }
 }
 
-function mapOpenError(error: unknown): string {
+function mapError(error: unknown, fallback: string): string {
   if (error instanceof PasskeyCancelledError)
     return 'cancelled'
+  if (error instanceof PasskeyMismatchError)
+    return 'passkeyMismatch'
   if (isMeraError(error) && error.code === 'PRF_UNAVAILABLE')
     return 'prfUnavailable'
-  return 'passkeyFailed'
-}
-
-function endSession(reason: 'timer' | 'lock' | 'pagehide' | 'error' = 'timer'): void {
-  clearTimer()
-  session?.end()
-  session = undefined
-  const account = useAccountStore()
-  account.hasSession = false
-  account.expiresAt = undefined
-  if (shouldSetSessionExpired(reason, account.address !== undefined))
-    account.sessionExpired = true
-  if (account.status !== 'error')
-    account.status = 'idle'
-}
-
-function bindPagehide(): void {
-  if (!import.meta.client || pagehideBound)
-    return
-  pagehideBound = true
-  window.addEventListener('pagehide', (event) => {
-    // Biometric sheets can fire pagehide; do not destroy an in-flight open.
-    if (event.persisted || opening)
-      return
-    endSession('pagehide')
-  })
+  return fallback
 }
 
 export function useSigningSession() {
   const account = useAccountStore()
-  bindPagehide()
 
   async function refreshBalance(): Promise<void> {
     if (account.address === undefined)
@@ -72,116 +47,80 @@ export function useSigningSession() {
     account.balanceWei = await readBalance(account.address)
   }
 
+  /** Onboarding / recovery only: Passkey continue-or-create, then forget the key. */
   async function open(): Promise<boolean> {
     if (!import.meta.client)
       return false
-    opening = true
     account.status = 'opening'
     account.errorMessage = undefined
     try {
       const opened = await continueThenCreate(readStoredCredentialId())
-      clearTimer()
-      session?.end()
-      session = opened.session
+      opened.session.end()
       writeStoredCredentialId(opened.credentialId)
+      writeBoundAddress(opened.address)
       account.address = opened.address
-      account.hasSession = true
-      account.sessionExpired = false
-      account.expiresAt = Date.now() + SESSION_MS
-      account.status = 'ready'
-      account.lastTxHash = undefined
       account.activity = readActivity(opened.address)
-      expiresTimer = setTimeout(() => {
-        endSession('timer')
-      }, SESSION_MS)
-      // Balance is secondary: never block navigation / mark Passkey as failed.
+      account.lastTxHash = undefined
+      account.status = 'idle'
       void refreshBalance().catch(() => {})
       return true
     }
     catch (error) {
-      endSession('error')
       account.status = 'error'
-      account.errorMessage = mapOpenError(error)
+      account.errorMessage = mapError(error, 'passkeyFailed')
       return false
     }
+  }
+
+  /** One biometric prompt → sign → wipe. */
+  async function withSigner<T>(fn: (session: Secp256k1SigningSession) => Promise<T>): Promise<T> {
+    const opened = await unlockForSigning(readStoredCredentialId())
+    try {
+      if (account.address && opened.address.toLowerCase() !== account.address.toLowerCase())
+        throw new PasskeyMismatchError()
+      if (!account.address) {
+        account.address = opened.address
+        writeBoundAddress(opened.address)
+      }
+      writeStoredCredentialId(opened.credentialId)
+      account.status = 'sending'
+      return await fn(opened.session)
+    }
     finally {
-      opening = false
+      opened.session.end()
+    }
+  }
+
+  async function runSigned<T>(fallbackError: string, fn: (session: Secp256k1SigningSession) => Promise<T>): Promise<T | undefined> {
+    account.status = 'opening'
+    account.errorMessage = undefined
+    try {
+      const result = await withSigner(fn)
+      account.status = 'idle'
+      return result
+    }
+    catch (error) {
+      account.status = 'error'
+      account.errorMessage = mapError(error, fallbackError)
+      return undefined
     }
   }
 
   async function send(to: `0x${string}`, value: bigint): Promise<void> {
-    if (session === undefined || account.balanceWei === undefined || value <= 0n || account.balanceWei <= value)
+    if (account.balanceWei === undefined || value <= 0n || account.balanceWei <= value)
       return
-    account.status = 'sending'
-    account.errorMessage = undefined
-    try {
-      const hash = await sendPayment(session, to, value)
-      account.lastTxHash = hash
-      if (account.address !== undefined) {
-        account.activity = recordPayment(account.address, {
-          hash,
-          to,
-          valueWei: value.toString(),
-        })
-      }
-      await refreshBalance()
-      account.status = 'ready'
+    const hash = await runSigned('sendFailed', session => sendPayment(session, to, value))
+    if (!hash)
+      return
+    account.lastTxHash = hash
+    if (account.address !== undefined) {
+      account.activity = recordPayment(account.address, { hash, to, valueWei: value.toString() })
     }
-    catch {
-      account.status = 'error'
-      account.errorMessage = 'sendFailed'
-      account.hasSession = session !== undefined
-    }
-  }
-
-  async function swap(
-    direction: SwapDirection,
-    amountIn: bigint,
-    slippagePercent = 2,
-  ): Promise<`0x${string}` | undefined> {
-    if (session === undefined || account.address === undefined)
-      return undefined
-    account.status = 'sending'
-    account.errorMessage = undefined
-    try {
-      const { amount: amountOut, error: quoteError } = await getAmountOut(amountIn, direction)
-      if (quoteError || amountOut === 0n) {
-        account.errorMessage = quoteError === 'No liquidity' ? 'noLiquidity' : 'quoteFailed'
-        account.status = 'error'
-        return undefined
-      }
-
-      const amountOutMin = calculateMinAmountOut(amountOut, slippagePercent)
-      const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
-
-      let hash: `0x${string}`
-
-      if (direction === 'monToUsdc') {
-        hash = await swapExactETHForTokens(session, amountIn, amountOutMin, deadline)
-      }
-      else {
-        const allowance = await readUsdcAllowance(account.address, getRouterAddress())
-        if (allowance < amountIn)
-          await approveUsdc(session, amountIn)
-
-        hash = await swapExactTokensForETH(session, amountIn, amountOutMin, deadline)
-      }
-
-      account.lastTxHash = hash
-      await refreshBalance()
-      account.status = 'ready'
-      return hash
-    }
-    catch (error) {
-      account.status = 'error'
-      account.errorMessage = 'swapFailed'
-      account.hasSession = session !== undefined
-      return undefined
-    }
+    await refreshBalance().catch(() => {})
   }
 
   async function sendUsdc(to: `0x${string}`, amountBase: bigint): Promise<void> {
-    if (session === undefined || account.address === undefined || amountBase <= 0n)
+    if (account.address === undefined || amountBase <= 0n)
       return
     const usdcBalance = await readUsdcBalance(account.address)
     if (usdcBalance < amountBase) {
@@ -189,19 +128,51 @@ export function useSigningSession() {
       account.errorMessage = 'insufficientUsdc'
       return
     }
-    account.status = 'sending'
-    account.errorMessage = undefined
-    try {
-      const hash = await sendUsdcTransfer(session, to, amountBase)
+    const hash = await runSigned('sendFailed', session => sendUsdcTransfer(session, to, amountBase))
+    if (!hash)
+      return
+    account.lastTxHash = hash
+    await refreshBalance().catch(() => {})
+  }
+
+  async function claimTestUsdc(): Promise<`0x${string}` | undefined> {
+    const hash = await runSigned('faucetClaimFailed', session => claimMockUsdc(session))
+    if (hash) {
       account.lastTxHash = hash
-      await refreshBalance()
-      account.status = 'ready'
+      await refreshBalance().catch(() => {})
     }
-    catch {
+    return hash
+  }
+
+  async function swap(
+    direction: SwapDirection,
+    amountIn: bigint,
+    slippagePercent = 2,
+  ): Promise<`0x${string}` | undefined> {
+    if (account.address === undefined)
+      return undefined
+    const { amount: amountOut, error: quoteError } = await getAmountOut(amountIn, direction)
+    if (quoteError || amountOut === 0n) {
+      account.errorMessage = quoteError === 'No liquidity' ? 'noLiquidity' : 'quoteFailed'
       account.status = 'error'
-      account.errorMessage = 'sendFailed'
-      account.hasSession = session !== undefined
+      return undefined
     }
+    const amountOutMin = calculateMinAmountOut(amountOut, slippagePercent)
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 300)
+    const owner = account.address
+    const hash = await runSigned('swapFailed', async (session) => {
+      if (direction === 'monToUsdc')
+        return swapExactETHForTokens(session, amountIn, amountOutMin, deadline)
+      const allowance = await readUsdcAllowance(owner, getRouterAddress())
+      if (allowance < amountIn)
+        await approveUsdc(session, amountIn)
+      return swapExactTokensForETH(session, amountIn, amountOutMin, deadline)
+    })
+    if (hash) {
+      account.lastTxHash = hash
+      await refreshBalance().catch(() => {})
+    }
+    return hash
   }
 
   async function getUsdcBalance(): Promise<bigint> {
@@ -214,17 +185,7 @@ export function useSigningSession() {
     return getAmountOut(amountIn, direction)
   }
 
-  function lock(): void {
-    endSession('lock')
-    account.address = undefined
-    account.balanceWei = undefined
-    account.lastTxHash = undefined
-    account.activity = []
-    account.errorMessage = undefined
-    account.sessionExpired = false
-    account.status = 'idle'
-  }
-
+  /** Forget this device's account (Passkey itself stays in the authenticator). */
   function signOut(): void {
     const addr = account.address
     if (addr !== undefined) {
@@ -235,28 +196,13 @@ export function useSigningSession() {
     clearPendingPayUri()
     clearAppAuth()
     clearBoundAddress()
-    lock()
-  }
-
-
-  async function claimTestUsdc(): Promise<`0x${string}` | undefined> {
-    if (session === undefined)
-      return undefined
-    account.status = 'sending'
+    account.address = undefined
+    account.balanceWei = undefined
+    account.lastTxHash = undefined
+    account.activity = []
     account.errorMessage = undefined
-    try {
-      const hash = await claimMockUsdc(session)
-      account.lastTxHash = hash
-      account.status = 'ready'
-      return hash
-    }
-    catch {
-      account.status = 'error'
-      account.errorMessage = 'faucetClaimFailed'
-      account.hasSession = session !== undefined
-      return undefined
-    }
+    account.status = 'idle'
   }
 
-  return { open, end: endSession, lock, signOut, refreshBalance, send, sendUsdc, claimTestUsdc, swap, getUsdcBalance, getSwapQuote }
+  return { open, signOut, refreshBalance, send, sendUsdc, claimTestUsdc, swap, getUsdcBalance, getSwapQuote }
 }

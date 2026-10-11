@@ -18,9 +18,6 @@ onMounted(() => {
       <p v-if="appAuth" class="text-[12px] leading-[1.33] text-[#737373]">
         {{ t('githubMockLoggedIn') }} · {{ t('githubUser', { login: appAuth.login }) }}
       </p>
-      <p v-else-if="account.sessionExpired" class="text-[12px] leading-[1.33] text-[#737373]">
-        {{ t('sessionExpired') }}
-      </p>
     </div>
     <NuxtLink
       to="/settings"

@@ -1,0 +1,9 @@
+Flowpay 是运行在 Monad 测试网上的当面稳定币收款产品：商户输入 USDC 金额生成收款码，顾客扫码后用一次 Face ID / 指纹（Passkey，基于 Category Labs 的 Mera）完成付款；商户端确认到账并保留可导出流水。全程无种子短语、无钱包扩展、无托管后端。
+
+我们解决的是「链上账户门槛」与「线下 USDC 收银」的交叉问题——愿意收稳定币的小商户，需要接近扫码支付的体验；顾客不应被助记词、Gas 术语和钱包弹窗挡住。Flowpay 用 Mera 把账户层做成 Passkey：一次验证开户与恢复，Signing Session 降低重复刷脸；收银台匹配链上 Transfer，今日流水可导出 CSV 对账。
+
+当前演示路径聚焦双设备当面收款与 Stateless 恢复（清除本机数据后仍可用同一 Passkey 找回同一地址）。Gas 在测试网阶段诚实依赖水龙头，不夸大赞助能力。产品主线即黑客松提交物：同一套真实产品，不是单独演示分叉。
+
+演示：https://flowpay-tau-sand.vercel.app
+仓库：https://github.com/baikingrio/flowpay
+赛道侧重 Trust / Identity 与 Consumer Payments，并对齐 Mera bounty（One-prompt、Session、Stateless）。

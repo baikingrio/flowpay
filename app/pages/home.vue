@@ -26,7 +26,7 @@ const explorerBase = 'https://testnet.monadexplorer.com/tx/'
 
 const needsMockUsdc = computed(() =>
   IS_MOCK_USDC
-  && account.hasSession
+  && account.address
   && (usdcBalance.value === undefined || usdcBalance.value === 0n),
 )
 
@@ -54,7 +54,7 @@ async function refreshUsdc() {
 }
 
 async function onClaimUsdc() {
-  if (claimingUsdc.value || !account.hasSession)
+  if (claimingUsdc.value || !account.address)
     return
   claimingUsdc.value = true
   claimUsdcHash.value = undefined

@@ -59,7 +59,7 @@ const insufficient = computed(() =>
 )
 
 const canSwap = computed(() =>
-  account.hasSession
+  account.address
   && parsedAmountIn.value !== undefined
   && parsedAmountIn.value > 0n
   && !insufficient.value
@@ -104,7 +104,7 @@ function toggleDirection() {
 
 async function onSwap() {
   localError.value = undefined
-  if (!account.hasSession) {
+  if (!account.address) {
     await open()
     return
   }
@@ -204,7 +204,7 @@ onMounted(() => {
           {{ t('explorer') }}
         </NuxtLink>
       </p>
-      <p v-if="account.sessionExpired && !account.hasSession" class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
+      <p v-if="false" class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
         {{ t('sessionExpiredPrompt') }}
       </p>
       <p v-if="localError || account.errorMessage" class="mt-4 text-[14px] leading-[1.43] text-[#e7000b]">
@@ -213,13 +213,13 @@ onMounted(() => {
     </div>
 
     <Button
-      v-if="!account.hasSession"
+      v-if="!account.address"
       class="mt-6 h-11 w-full bg-[#0a0a0a] text-[14px] font-medium text-[#fafafa] hover:bg-[#0a0a0a]/90"
       type="button"
       :disabled="account.status === 'opening'"
       @click="open"
     >
-      {{ account.status === 'opening' ? t('opening') : account.sessionExpired ? t('continue') : t('start') }}
+      {{ account.status === 'opening' ? t('opening') : t('start') }}
     </Button>
     <Button
       v-else

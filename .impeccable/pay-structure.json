@@ -1,0 +1,59 @@
+{
+  "title": "重做 /pay 的结构",
+  "question": "这次抽到「先写收款人」。沿用它、换成挑战项，或重抽。视觉世界仍是 DESIGN.md，不换皮肤。",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "先写收款人",
+      "kicker": "这次的结构",
+      "lineage": "发消息：To，然后正文",
+      "thesis": "支付像发一条消息：先确定给谁，再写金额，然后发送。",
+      "palette": ["#f5f5f5", "#ffffff", "#0a0a0a", "#737373", "#e5e5e5"],
+      "materials": ["24px paper card", "18px pill input", "Geist"],
+      "viewport": "第一屏是收款地址；其下是金额；黑色发送钉在底栏上方。",
+      "risk": "金额不够大时，会像一张普通表单，而不是支付。"
+    },
+    {
+      "id": "challenger-hardware",
+      "label": "按键台",
+      "lineage": "工作台上的一排实体键",
+      "thesis": "先写收款人，金额用数字键敲出来，只有那颗墨色键是发送。",
+      "palette": ["#f5f5f5", "#ffffff", "#0a0a0a", "#737373", "#e5e5e5"],
+      "materials": ["pill key grid", "hairline", "one filled send"],
+      "viewport": "上：地址。中：大数字。下：数字键网格和发送。",
+      "case": "金额手感强；容易看起来像计算器，收款人被挤到顶上。",
+      "risk": "数字键盘吃掉半屏，谁在收款会变弱。",
+      "hero": "https://impeccable.style/worlds/cards/design-canon-creator-hardware-bench-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/design-canon-creator-hardware-bench.webp"
+    },
+    {
+      "id": "challenger-hypercard",
+      "label": "两张卡片",
+      "lineage": "一张做完再翻下一张",
+      "thesis": "一张只写给谁，翻过去再写多少，发送仍在最后一张。",
+      "palette": ["#f5f5f5", "#ffffff", "#0a0a0a", "#737373", "#e5e5e5"],
+      "materials": ["one paper card at a time", "pill controls"],
+      "viewport": "整屏一张白卡：先是地址和继续；下一张是金额和发送。",
+      "case": "每一步只做一件事；多一次翻页，和一次仪式的流畅感打架。",
+      "risk": "评委和新手都会觉得在走向导。",
+      "hero": "https://impeccable.style/worlds/cards/medium-native-hypercard-stack-shoebox-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/medium-native-hypercard-stack-shoebox.webp"
+    },
+    {
+      "id": "challenger-splitflap",
+      "label": "一行出发",
+      "lineage": "车站出发牌上的一行",
+      "thesis": "这一笔就是一块出发牌：目的地、金额、状态各占一列。",
+      "palette": ["#f5f5f5", "#ffffff", "#0a0a0a", "#737373", "#e5e5e5"],
+      "materials": ["ruled row", "fixed columns", "live status"],
+      "viewport": "一条横贯的出发行：To、金额、状态；发送是行尾动作。",
+      "case": "作为已发送的记录很清楚；作为正在填写的表单，列结构帮不上输入地址。",
+      "risk": "把草稿硬塞进时刻表，输入会别扭。",
+      "hero": "https://impeccable.style/worlds/cards/signals-instruments-split-flap-concourse-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/signals-instruments-split-flap-concourse.webp"
+    }
+  ],
+  "reroll": true,
+  "canon": false,
+  "steer": true
+}

@@ -78,7 +78,7 @@ const insufficientGas = computed(() =>
   asset.value === 'usdc' && account.balanceWei !== undefined && account.balanceWei === 0n,
 )
 const canPay = computed(() => {
-  if (!account.hasSession || parsedRecipient.value === undefined || parsedAmount.value === undefined)
+  if (!account.address || parsedRecipient.value === undefined || parsedAmount.value === undefined)
     return false
   if (asset.value === 'usdc')
     return usdcBalance.value >= parsedAmount.value && account.balanceWei !== undefined && account.balanceWei > 0n
@@ -94,7 +94,7 @@ const statusLine = computed(() =>
     || insufficientGas.value
     || localWarning.value
     || (account.lastTxHash && explorerHref.value)
-    || (account.sessionExpired && !account.hasSession)
+    || false
     || account.balanceWei === 0n,
   ),
 )
@@ -224,7 +224,7 @@ function onRecipientPaste(event: ClipboardEvent) {
 
 async function onSend() {
   localError.value = undefined
-  if (!account.hasSession) {
+  if (!account.address) {
     await open()
     return
   }
@@ -286,15 +286,15 @@ onMounted(async () => {
     if (fromQuery)
       await navigateTo({ path: '/pay', query: {} }, { replace: true })
   }
-  if (account.hasSession)
+  if (account.address)
     usdcBalance.value = await getUsdcBalance()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onWindowKey)
 })
 
-watch(() => account.hasSession, async (hasSession) => {
-  if (hasSession)
+watch(() => account.address, async (address) => {
+  if (address)
     usdcBalance.value = await getUsdcBalance()
   else
     usdcBalance.value = 0n
@@ -392,7 +392,7 @@ watch(() => account.hasSession, async (hasSession) => {
           {{ t('sent') }}
           <NuxtLink class="underline" :to="explorerHref" external>{{ t('explorer') }}</NuxtLink>
         </template>
-        <template v-else-if="account.sessionExpired && !account.hasSession">{{ t('sessionExpiredPrompt') }}</template>
+        <template v-else-if="false">{{ t('sessionExpiredPrompt') }}</template>
         <template v-else-if="account.balanceWei === 0n">
           {{ t('faucetNeed') }}
           <NuxtLink class="underline" :to="FAUCET_URL" external>{{ t('faucet') }}</NuxtLink>
@@ -400,13 +400,13 @@ watch(() => account.hasSession, async (hasSession) => {
       </p>
 
       <Button
-        v-if="!account.hasSession"
+        v-if="!account.address"
         class="h-10 w-full bg-[#0a0a0a] text-[14px] font-medium text-[#fafafa] hover:bg-[#0a0a0a]/90"
         type="button"
         :disabled="account.status === 'opening'"
         @click="open"
       >
-        {{ account.status === 'opening' ? t('opening') : account.sessionExpired ? t('continue') : t('start') }}
+        {{ account.status === 'opening' ? t('opening') : t('start') }}
       </Button>
       <Button
         v-else
