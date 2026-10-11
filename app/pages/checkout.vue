@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { Delete } from '@lucide/vue'
+import { Check, Copy, Delete } from '@lucide/vue'
+import { parseEther } from 'viem'
 import { Button } from '@/components/ui/button'
-import { buildErc20TransferUri, toAppPayPath } from '~/lib/eip681'
 import { formatUsdcFromBase, parseUsdcToBase } from '~/lib/usdc-amount'
 import { IS_MOCK_USDC, USDC_ADDRESS } from '~/lib/tokens'
 import { clearCheckoutIntent, readCheckoutIntent, stashCheckoutIntent } from '~/lib/pending-checkout'
-import type { TransferCandidate } from '~/lib/checkout-match'
+import type { CheckoutIntent, TransferCandidate } from '~/lib/checkout-match'
 import { matchCheckoutTransfer } from '~/lib/checkout-match'
-import { getPublicClient } from '~/lib/ledger'
+import { formatMon, getPublicClient, readBalance } from '~/lib/ledger'
 import { encodeQrDataUrl } from '~/lib/qr-encode'
 import { blockRanges } from '~/lib/block-ranges'
+import { shortAddress } from '~/lib/format'
 import { readCheckoutLedger, recordCheckoutReceipt, summarizeToday, exportReceiptsAsCSV, downloadCSV, isSameLocalDay } from '~/lib/checkout-ledger'
+import type { ReceiveAsset } from '~/lib/receive'
+import { buildReceivePayLink, buildReceiveUri, matchNativeArrival, receiptTokenFor } from '~/lib/receive'
 
 const { t, locale } = useI18n()
 const account = useAccountStore()
@@ -20,9 +23,11 @@ definePageMeta({
   layout: 'shell',
 })
 
-type CheckoutState = 'idle' | 'pending' | 'success' | 'timeout'
+/** idle = keypad; address = any-amount code (no detection); pending/success/timeout = fixed amount flow. */
+type CheckoutState = 'idle' | 'address' | 'pending' | 'success' | 'timeout'
 
 const state = ref<CheckoutState>('idle')
+const asset = ref<ReceiveAsset>('usdc')
 const amountText = ref('')
 const paymentUri = ref('')
 const paymentLink = ref('')
@@ -31,21 +36,35 @@ const matchedTxHash = ref<`0x${string}` | undefined>()
 const pollTimer = ref<ReturnType<typeof setInterval> | undefined>()
 const startBlockNumber = ref<bigint | undefined>()
 const ledgerTick = ref(0)
+const copied = ref<'address' | 'uri' | 'link'>()
+const starting = ref(false)
+const startError = ref(false)
 
 const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'] as const
 
-const parsedAmount = computed(() => {
-  if (!amountText.value)
+const usdcLabel = IS_MOCK_USDC ? 'mUSDC' : 'USDC'
+const assetLabel = computed(() => asset.value === 'usdc' ? usdcLabel : 'MON')
+
+function parseAmount(raw: string, kind: ReceiveAsset): bigint | undefined {
+  const cleaned = raw.endsWith('.') ? raw.slice(0, -1) : raw
+  if (!cleaned || cleaned === '.')
     return undefined
   try {
-    return parseUsdcToBase(amountText.value)
+    const value = kind === 'usdc' ? parseUsdcToBase(cleaned) : parseEther(cleaned)
+    return value > 0n ? value : undefined
   }
   catch {
     return undefined
   }
-})
+}
 
-const canStartCheckout = computed(() => parsedAmount.value !== undefined && parsedAmount.value > 0n)
+function formatAmount(value: bigint, kind: ReceiveAsset): string {
+  return kind === 'usdc' ? formatUsdcFromBase(value) : formatMon(value)
+}
+
+const parsedAmount = computed(() => parseAmount(amountText.value, asset.value))
+const hasAmount = computed(() => parsedAmount.value !== undefined)
+const displayAmount = computed(() => formatAmount(parsedAmount.value ?? 0n, asset.value))
 
 const explorerHref = computed(() =>
   matchedTxHash.value
@@ -54,14 +73,30 @@ const explorerHref = computed(() =>
 )
 
 const todaySummary = computed(() => {
-  ledgerTick.value
+  void ledgerTick.value
   if (!account.address)
-    return { count: 0, totalBase: 0n, items: [] }
-  const entries = readCheckoutLedger(account.address)
-  return summarizeToday(entries)
+    return summarizeToday([])
+  return summarizeToday(readCheckoutLedger(account.address))
 })
 
+const todayTotalText = computed(() => {
+  const parts: string[] = []
+  if (todaySummary.value.totalBase > 0n || todaySummary.value.totalMonWei === 0n)
+    parts.push(`${formatUsdcFromBase(todaySummary.value.totalBase)} ${usdcLabel}`)
+  if (todaySummary.value.totalMonWei > 0n)
+    parts.push(`${formatMon(todaySummary.value.totalMonWei)} MON`)
+  return parts.join(' · ')
+})
+
+function setAsset(next: ReceiveAsset) {
+  if (asset.value === next)
+    return
+  asset.value = next
+  amountText.value = ''
+}
+
 function pressKey(key: typeof keys[number]) {
+  startError.value = false
   if (key === 'back') {
     amountText.value = amountText.value.slice(0, -1)
     return
@@ -78,37 +113,85 @@ function pressKey(key: typeof keys[number]) {
   }
   const next = `${amountText.value}${key}`
   const [whole = '', fraction] = next.split('.')
-  if (whole.length > 18 || (fraction !== undefined && fraction.length > 6))
+  const maxFraction = asset.value === 'usdc' ? 6 : 18
+  if (whole.length > 18 || (fraction !== undefined && fraction.length > maxFraction))
     return
   amountText.value = next
 }
 
+async function renderCode(kind: ReceiveAsset, to: `0x${string}`, amount?: bigint) {
+  const uri = buildReceiveUri({ asset: kind, to, usdcToken: USDC_ADDRESS, amount })
+  paymentUri.value = uri
+  // HTTPS pay link (not raw EIP-681) in the QR so phone cameras open Flowpay's pay page
+  paymentLink.value = buildReceivePayLink(window.location.origin, uri)
+  qrDataUri.value = await encodeQrDataUrl(paymentLink.value)
+}
+
+async function ensureAddress(): Promise<`0x${string}` | undefined> {
+  if (!account.address)
+    await open()
+  return account.address
+}
+
+async function onPrimary() {
+  if (starting.value)
+    return
+  if (hasAmount.value)
+    await startCheckout()
+  else
+    await showAddressCode()
+}
+
+async function showAddressCode() {
+  const to = await ensureAddress()
+  if (!to)
+    return
+  await renderCode(asset.value, to)
+  state.value = 'address'
+}
+
 async function startCheckout() {
-  if (!account.address || !parsedAmount.value)
+  const amount = parsedAmount.value
+  if (!amount)
+    return
+  const to = await ensureAddress()
+  if (!to)
     return
 
-  const uri = buildErc20TransferUri({
-    token: USDC_ADDRESS,
-    to: account.address,
-    amount: parsedAmount.value,
-    chainId: 10143,
-  })
+  starting.value = true
+  startError.value = false
+  try {
+    let baselineWei: bigint | undefined
+    if (asset.value === 'mon') {
+      try {
+        baselineWei = await readBalance(to)
+      }
+      catch (error) {
+        console.error('Failed to read MON baseline:', error)
+        startError.value = true
+        return
+      }
+    }
 
-  paymentUri.value = uri
-  // Use HTTPS pay link (not raw EIP-681) in QR for better mobile app compatibility
-  paymentLink.value = `${window.location.origin}${toAppPayPath(uri)}`
-  qrDataUri.value = await encodeQrDataUrl(paymentLink.value)
+    await renderCode(asset.value, to, amount)
 
-  const intent = {
-    expectedTo: account.address,
-    amountBase: parsedAmount.value,
-    startedAt: Date.now(),
-    token: USDC_ADDRESS,
+    const intent: CheckoutIntent = {
+      expectedTo: to,
+      amountBase: amount,
+      startedAt: Date.now(),
+      token: USDC_ADDRESS,
+      asset: asset.value,
+      baselineWei,
+    }
+    stashCheckoutIntent(intent)
+
+    startBlockNumber.value = undefined
+    state.value = 'pending'
+    startPolling()
   }
-  stashCheckoutIntent(intent)
-
-  state.value = 'pending'
-  startPolling()
+  finally {
+    starting.value = false
+  }
 }
 
 function cancelCheckout() {
@@ -116,6 +199,10 @@ function cancelCheckout() {
   clearCheckoutIntent()
   state.value = 'idle'
   matchedTxHash.value = undefined
+}
+
+function backToKeypad() {
+  state.value = 'idle'
 }
 
 function startOver() {
@@ -139,6 +226,22 @@ function stopPolling() {
   }
 }
 
+function markSuccess(intent: CheckoutIntent, hash?: `0x${string}`) {
+  matchedTxHash.value = hash
+  recordCheckoutReceipt(intent.expectedTo, {
+    hash,
+    token: receiptTokenFor(intent.asset ?? 'usdc'),
+    amountBase: intent.amountBase,
+    to: intent.expectedTo,
+    status: 'success',
+  })
+  ledgerTick.value++
+  state.value = 'success'
+  playSuccessSound()
+  stopPolling()
+  clearCheckoutIntent()
+}
+
 async function checkForMatch() {
   const intent = readCheckoutIntent()
   if (!intent || !account.address)
@@ -152,6 +255,15 @@ async function checkForMatch() {
   }
 
   try {
+    if (intent.asset === 'mon') {
+      if (intent.baselineWei === undefined)
+        return
+      const currentWei = await readBalance(intent.expectedTo)
+      if (matchNativeArrival({ baselineWei: intent.baselineWei, currentWei, amountWei: intent.amountBase }))
+        markSuccess(intent)
+      return
+    }
+
     const client = getPublicClient()
 
     if (!startBlockNumber.value) {
@@ -179,7 +291,7 @@ async function checkForMatch() {
             ],
           },
           args: {
-            to: account.address,
+            to: intent.expectedTo,
           },
           fromBlock,
           toBlock,
@@ -201,34 +313,23 @@ async function checkForMatch() {
     }
 
     const match = matchCheckoutTransfer(intent, candidates, nowMs)
-    if (match) {
-      matchedTxHash.value = match.hash
-      if (account.address) {
-        recordCheckoutReceipt(account.address, {
-          hash: match.hash,
-          amountBase: intent.amountBase,
-          to: intent.expectedTo,
-          status: 'success',
-        })
-        ledgerTick.value++
-      }
-      state.value = 'success'
-      playSuccessSound()
-      stopPolling()
-      clearCheckoutIntent()
-    }
+    if (match)
+      markSuccess(intent, match.hash)
   }
   catch (error) {
     console.error('Poll error:', error)
   }
 }
 
-async function copiedUri() {
-  await navigator.clipboard.writeText(paymentUri.value)
-}
-
-async function copiedLink() {
-  await navigator.clipboard.writeText(paymentLink.value)
+async function copy(value: string, kind: 'address' | 'uri' | 'link') {
+  if (!value)
+    return
+  await navigator.clipboard.writeText(value)
+  copied.value = kind
+  window.setTimeout(() => {
+    if (copied.value === kind)
+      copied.value = undefined
+  }, 1500)
 }
 
 function exportTodayLedger() {
@@ -242,26 +343,12 @@ function exportTodayLedger() {
 }
 
 onMounted(async () => {
-  if (!account.address) {
-    await open()
-  }
   const intent = readCheckoutIntent()
-  if (intent && account.address === intent.expectedTo) {
-    const amountFormatted = formatUsdcFromBase(intent.amountBase)
-    amountText.value = amountFormatted
-
-    const uri = buildErc20TransferUri({
-      token: USDC_ADDRESS,
-      to: account.address,
-      amount: intent.amountBase,
-      chainId: 10143,
-    })
-
-    paymentUri.value = uri
-    // Use HTTPS pay link (not raw EIP-681) in QR for better mobile app compatibility
-    paymentLink.value = `${window.location.origin}${toAppPayPath(uri)}`
-    qrDataUri.value = await encodeQrDataUrl(paymentLink.value)
-
+  if (intent && account.address && account.address.toLowerCase() === intent.expectedTo.toLowerCase()) {
+    const kind = intent.asset ?? 'usdc'
+    asset.value = kind
+    amountText.value = formatAmount(intent.amountBase, kind)
+    await renderCode(kind, intent.expectedTo, intent.amountBase)
     state.value = 'pending'
     startPolling()
   }
@@ -299,7 +386,7 @@ function playSuccessSound() {
 
 <template>
   <div class="flex h-[calc(100dvh-160px)] max-h-[calc(100dvh-160px)] flex-col overflow-hidden">
-    <!-- Idle: amount + keypad -->
+    <!-- Idle: token + amount + keypad -->
     <div v-if="state === 'idle'" class="flex min-h-0 flex-1 flex-col">
       <div class="flex shrink-0 items-baseline justify-between gap-2">
         <h1 class="text-[16px] font-semibold tracking-[-0.02em]">
@@ -307,7 +394,7 @@ function playSuccessSound() {
         </h1>
         <p class="truncate text-[12px] text-[#737373]">
           <template v-if="todaySummary.count > 0">
-            {{ t('todayLedgerSummary', { count: todaySummary.count, total: formatUsdcFromBase(todaySummary.totalBase) }) }}
+            {{ t('todayLedgerSummary', { count: todaySummary.count, total: todayTotalText }) }}
           </template>
           <template v-else>
             {{ t('todayLedgerEmpty') }}
@@ -315,10 +402,32 @@ function playSuccessSound() {
         </p>
       </div>
 
-      <p class="mt-2 shrink-0 text-right text-[36px] leading-[1.1] font-semibold tracking-[-0.04em] tabular-nums">
-        <span :class="amountText ? 'text-[#0a0a0a]' : 'text-[#737373]'">{{ amountText || '0' }}</span>
-        <span class="ml-1 text-[14px] font-medium tracking-normal text-[#737373]">{{ IS_MOCK_USDC ? 'mUSDC' : 'USDC' }}</span>
-      </p>
+      <div class="mt-2 flex shrink-0 items-end justify-between gap-3">
+        <div class="flex gap-1.5" role="group" :aria-label="t('receiveToken')">
+          <button
+            type="button"
+            class="h-8 rounded-xl px-3 text-[12px] font-medium"
+            :class="asset === 'usdc' ? 'bg-[#0a0a0a] text-[#fafafa]' : 'bg-[#f5f5f5] text-[#737373]'"
+            :aria-pressed="asset === 'usdc'"
+            @click="setAsset('usdc')"
+          >
+            {{ usdcLabel }}
+          </button>
+          <button
+            type="button"
+            class="h-8 rounded-xl px-3 text-[12px] font-medium"
+            :class="asset === 'mon' ? 'bg-[#0a0a0a] text-[#fafafa]' : 'bg-[#f5f5f5] text-[#737373]'"
+            :aria-pressed="asset === 'mon'"
+            @click="setAsset('mon')"
+          >
+            MON
+          </button>
+        </div>
+        <p class="min-w-0 truncate text-right text-[36px] leading-[1.1] font-semibold tracking-[-0.04em] tabular-nums">
+          <span :class="amountText ? 'text-[#0a0a0a]' : 'text-[#737373]'">{{ amountText || '0' }}</span>
+          <span class="ml-1 text-[14px] font-medium tracking-normal text-[#737373]">{{ assetLabel }}</span>
+        </p>
+      </div>
 
       <div class="mt-3 shrink-0 grid grid-cols-3 gap-2 rounded-[24px] border border-[#e5e5e5] bg-white p-3 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
         <button
@@ -334,6 +443,10 @@ function playSuccessSound() {
         </button>
       </div>
 
+      <p v-if="startError" class="mt-2 shrink-0 truncate text-[12px] text-[#e7000b]">
+        {{ t('receiveStartFailed') }}
+      </p>
+
       <div class="mt-2 flex shrink-0 gap-2">
         <Button
           v-if="todaySummary.count > 0"
@@ -344,12 +457,79 @@ function playSuccessSound() {
           {{ t('exportCSV') }}
         </Button>
         <Button
+          v-if="hasAmount"
           class="h-10 flex-[2]"
-          :disabled="!canStartCheckout"
-          @click="startCheckout"
+          :disabled="starting"
+          @click="onPrimary"
         >
-          {{ t('startCheckout') }}
+          {{ t('receiveCreateCode') }}
         </Button>
+        <Button
+          v-else
+          variant="outline"
+          class="h-10 flex-[2] border-[#e5e5e5] bg-white shadow-none"
+          @click="onPrimary"
+        >
+          {{ t('receiveAnyAmount') }}
+        </Button>
+      </div>
+    </div>
+
+    <!-- Any amount: address code, no arrival detection -->
+    <div v-else-if="state === 'address'" class="flex min-h-0 flex-1 flex-col">
+      <div class="shrink-0 text-center">
+        <p class="text-[22px] font-semibold tracking-[-0.03em]">
+          {{ t('receiveAnyAmountTitle') }}
+          <span class="text-[14px] font-medium text-[#737373]">{{ assetLabel }}</span>
+        </p>
+        <p class="mt-1 text-[13px] text-[#737373]">
+          {{ t('receiveAnyAmountHint') }}
+        </p>
+      </div>
+
+      <div class="flex min-h-0 flex-1 items-center justify-center py-2">
+        <div class="rounded-2xl border border-[#e5e5e5] bg-white p-3 shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
+          <img
+            v-if="qrDataUri"
+            :src="qrDataUri"
+            :alt="t('receiveQrAlt')"
+            class="size-[min(42vw,180px)]"
+          >
+        </div>
+      </div>
+
+      <div class="shrink-0 space-y-2">
+        <div
+          v-if="account.address"
+          class="flex items-center justify-center gap-1.5 text-[14px] leading-[1.43] text-[#737373]"
+        >
+          <span class="font-mono tabular-nums">{{ shortAddress(account.address) }}</span>
+          <button
+            type="button"
+            class="inline-flex size-7 items-center justify-center rounded-lg text-[#737373] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+            :aria-label="copied === 'address' ? t('copied') : t('copy')"
+            @click="copy(account.address, 'address')"
+          >
+            <Check v-if="copied === 'address'" class="size-3.5" :stroke-width="2" />
+            <Copy v-else class="size-3.5" :stroke-width="1.75" />
+          </button>
+        </div>
+        <div class="flex gap-2">
+          <Button
+            variant="outline"
+            class="h-10 flex-1 border-[#e5e5e5] bg-white shadow-none"
+            @click="backToKeypad"
+          >
+            {{ t('back') }}
+          </Button>
+          <Button
+            variant="outline"
+            class="h-10 flex-1 border-[#e5e5e5] bg-white shadow-none"
+            @click="copy(paymentLink, 'link')"
+          >
+            {{ copied === 'link' ? t('copiedLink') : t('copyPayLink') }}
+          </Button>
+        </div>
       </div>
     </div>
 
@@ -357,8 +537,8 @@ function playSuccessSound() {
     <div v-else-if="state === 'pending'" class="flex min-h-0 flex-1 flex-col">
       <div class="shrink-0 text-center">
         <p class="text-[28px] font-semibold tracking-[-0.03em] tabular-nums">
-          {{ formatUsdcFromBase(parsedAmount ?? 0n) }}
-          <span class="text-[14px] font-medium text-[#737373]">{{ IS_MOCK_USDC ? 'mUSDC' : 'USDC' }}</span>
+          {{ displayAmount }}
+          <span class="text-[14px] font-medium text-[#737373]">{{ assetLabel }}</span>
         </p>
         <p class="mt-1 text-[13px] text-[#737373]">
           {{ t('checkoutWaiting') }}
@@ -370,7 +550,7 @@ function playSuccessSound() {
           <img
             v-if="qrDataUri"
             :src="qrDataUri"
-            alt="Payment QR code"
+            :alt="t('receiveQrAlt')"
             class="size-[min(42vw,180px)]"
           >
         </div>
@@ -381,16 +561,16 @@ function playSuccessSound() {
           <Button
             variant="outline"
             class="h-9 flex-1 border-[#e5e5e5] bg-white text-[13px] shadow-none"
-            @click="copiedUri"
+            @click="copy(paymentUri, 'uri')"
           >
-            {{ t('copyUri') }}
+            {{ copied === 'uri' ? t('copiedUri') : t('copyUri') }}
           </Button>
           <Button
             variant="outline"
             class="h-9 flex-1 border-[#e5e5e5] bg-white text-[13px] shadow-none"
-            @click="copiedLink"
+            @click="copy(paymentLink, 'link')"
           >
-            {{ t('copyPayLink') }}
+            {{ copied === 'link' ? t('copiedLink') : t('copyPayLink') }}
           </Button>
         </div>
         <Button
@@ -412,8 +592,8 @@ function playSuccessSound() {
           </p>
         </div>
         <p class="mt-4 text-[28px] font-bold tracking-[-0.025em] text-[#16a34a] tabular-nums">
-          {{ formatUsdcFromBase(parsedAmount ?? 0n) }}
-          <span class="text-[14px] font-medium">{{ IS_MOCK_USDC ? 'mUSDC' : 'USDC' }}</span>
+          {{ displayAmount }}
+          <span class="text-[14px] font-medium">{{ assetLabel }}</span>
         </p>
         <p class="mt-1 text-[15px] font-semibold">
           {{ t('checkoutSuccess') }}
@@ -422,6 +602,9 @@ function playSuccessSound() {
           <NuxtLink class="underline" :to="explorerHref" external>
             {{ t('explorer') }}
           </NuxtLink>
+        </p>
+        <p v-else-if="asset === 'mon'" class="mt-2 text-[12px] text-[#737373]">
+          {{ t('receiveMonNoHash') }}
         </p>
       </div>
       <Button class="mt-2 h-10 w-full shrink-0" @click="startOver">
@@ -433,8 +616,8 @@ function playSuccessSound() {
     <div v-else-if="state === 'timeout'" class="flex min-h-0 flex-1 flex-col">
       <div class="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
         <p class="text-[28px] font-semibold tabular-nums">
-          {{ formatUsdcFromBase(parsedAmount ?? 0n) }}
-          <span class="text-[14px] font-medium text-[#737373]">{{ IS_MOCK_USDC ? 'mUSDC' : 'USDC' }}</span>
+          {{ displayAmount }}
+          <span class="text-[14px] font-medium text-[#737373]">{{ assetLabel }}</span>
         </p>
         <p class="mt-2 text-[14px] text-[#737373]">
           {{ t('checkoutTimeout') }}

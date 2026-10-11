@@ -11,10 +11,18 @@
  * Export: CSV format for reconciliation
  */
 
+import { formatUnits } from 'viem'
+
 export type SettlementStatus = 'success' | 'pending' | 'timeout' | 'mismatch'
 
+/** Token received. Entries stored before this field existed are USDC. */
+export type ReceiptToken = 'USDC' | 'MON'
+
 export interface CheckoutReceipt {
-  hash: `0x${string}`
+  /** Tx hash; absent for MON receipts detected by balance delta. */
+  hash?: `0x${string}`
+  /** Defaults to 'USDC' when absent (backward compatible). */
+  token?: ReceiptToken
   amountBase: bigint
   receivedAt: number
   to?: `0x${string}`
@@ -27,7 +35,8 @@ export interface CheckoutReceipt {
 }
 
 interface CheckoutReceiptSerialized {
-  hash: `0x${string}`
+  hash?: `0x${string}`
+  token?: ReceiptToken
   amountBase: string
   receivedAt: number
   to?: `0x${string}`
@@ -38,8 +47,31 @@ interface CheckoutReceiptSerialized {
 
 export interface TodaySummary {
   count: number
+  /** USDC total in 6-decimal base units. */
   totalBase: bigint
+  /** MON total in wei. */
+  totalMonWei: bigint
   items: CheckoutReceipt[]
+}
+
+export function receiptToken(receipt: Pick<CheckoutReceipt, 'token'>): ReceiptToken {
+  return receipt.token === 'MON' ? 'MON' : 'USDC'
+}
+
+/** Exact decimal amount for a receipt (USDC 6 decimals, MON 18 decimals). */
+export function formatReceiptAmount(receipt: Pick<CheckoutReceipt, 'token' | 'amountBase'>): string {
+  return receiptToken(receipt) === 'MON'
+    ? formatUnits(receipt.amountBase, 18)
+    : formatFixed(receipt.amountBase, 6)
+}
+
+function formatFixed(value: bigint, decimals: number): string {
+  const negative = value < 0n
+  const abs = negative ? -value : value
+  const scale = 10n ** BigInt(decimals)
+  const whole = abs / scale
+  const frac = (abs % scale).toString().padStart(decimals, '0')
+  return `${negative ? '-' : ''}${whole}.${frac}`
 }
 
 const DEFAULT_CAP = 500
@@ -104,6 +136,7 @@ export function recordCheckoutReceipt(
 ): CheckoutReceipt[] {
   const next: CheckoutReceipt = {
     hash: receipt.hash,
+    token: receiptToken(receipt),
     amountBase: receipt.amountBase,
     receivedAt: receipt.receivedAt ?? Date.now(),
     to: receipt.to,
@@ -113,7 +146,10 @@ export function recordCheckoutReceipt(
   }
 
   const existing = readCheckoutLedger(address, storage)
-  const filtered = existing.filter(item => item.hash !== next.hash)
+  // Dedupe by tx hash; hashless (MON balance-delta) receipts are never merged.
+  const filtered = next.hash
+    ? existing.filter(item => item.hash !== next.hash)
+    : existing
   const updated = [next, ...filtered].slice(0, cap)
 
   const s = storage ?? defaultStorage()
@@ -134,7 +170,12 @@ export function summarizeToday(
 
   return {
     count: todayItems.length,
-    totalBase: todayItems.reduce((sum, item) => sum + item.amountBase, 0n),
+    totalBase: todayItems
+      .filter(item => receiptToken(item) === 'USDC')
+      .reduce((sum, item) => sum + item.amountBase, 0n),
+    totalMonWei: todayItems
+      .filter(item => receiptToken(item) === 'MON')
+      .reduce((sum, item) => sum + item.amountBase, 0n),
     items: todayItems,
   }
 }
@@ -142,6 +183,7 @@ export function summarizeToday(
 function serializeReceipt(receipt: CheckoutReceipt): CheckoutReceiptSerialized {
   return {
     hash: receipt.hash,
+    token: receiptToken(receipt),
     amountBase: receipt.amountBase.toString(),
     receivedAt: receipt.receivedAt,
     to: receipt.to,
@@ -154,6 +196,7 @@ function serializeReceipt(receipt: CheckoutReceipt): CheckoutReceiptSerialized {
 function deserializeReceipt(serialized: CheckoutReceiptSerialized): CheckoutReceipt {
   return {
     hash: serialized.hash,
+    token: receiptToken(serialized),
     amountBase: BigInt(serialized.amountBase),
     receivedAt: serialized.receivedAt,
     to: serialized.to,
@@ -168,8 +211,8 @@ function isValidSerializedReceipt(value: unknown): value is CheckoutReceiptSeria
     return false
   const row = value as Partial<CheckoutReceiptSerialized>
   return (
-    typeof row.hash === 'string'
-    && row.hash.startsWith('0x')
+    (row.hash === undefined || (typeof row.hash === 'string' && row.hash.startsWith('0x')))
+    && (row.token === undefined || row.token === 'USDC' || row.token === 'MON')
     && typeof row.amountBase === 'string'
     && /^\d+$/.test(row.amountBase)
     && typeof row.receivedAt === 'number'
@@ -181,7 +224,7 @@ function isValidSerializedReceipt(value: unknown): value is CheckoutReceiptSeria
 /**
  * Export receipts as CSV for merchant reconciliation
  *
- * Columns: Timestamp, Amount (USDC), Status, Transaction Hash, Merchant Address
+ * Columns: Timestamp, Token, Amount, Status, Transaction Hash, Merchant Address
  */
 export function exportReceiptsAsCSV(
   receipts: CheckoutReceipt[],
@@ -190,7 +233,7 @@ export function exportReceiptsAsCSV(
   const { locale = 'en-US' } = options
 
   // CSV header
-  const header = 'Timestamp,Amount (USDC),Status,Transaction Hash,Merchant Address\n'
+  const header = 'Timestamp,Token,Amount,Status,Transaction Hash,Merchant Address\n'
 
   // CSV rows
   const rows = receipts.map((receipt) => {
@@ -202,13 +245,13 @@ export function exportReceiptsAsCSV(
       minute: '2-digit',
       second: '2-digit',
     })
-    // Convert from 6-decimal USDC base units to display amount
-    const amountUsdc = (Number(receipt.amountBase) / 1_000_000).toFixed(6)
+    const token = receiptToken(receipt)
+    const amount = formatReceiptAmount(receipt)
     const status = receipt.status
-    const hash = receipt.hash
+    const hash = receipt.hash ?? ''
     const merchant = receipt.to ?? 'N/A'
 
-    return `"${timestamp}","${amountUsdc}","${status}","${hash}","${merchant}"`
+    return `"${timestamp}","${token}","${amount}","${status}","${hash}","${merchant}"`
   })
 
   return header + rows.join('\n')

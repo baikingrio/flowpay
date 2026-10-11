@@ -3,6 +3,10 @@ export interface CheckoutIntent {
   amountBase: bigint
   startedAt: number
   token: `0x${string}`
+  /** 'usdc' when absent (intents stashed before MON support). */
+  asset?: 'usdc' | 'mon'
+  /** MON only: wallet balance (wei) when the request was created. */
+  baselineWei?: bigint
 }
 
 export interface TransferCandidate {

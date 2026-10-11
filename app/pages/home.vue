@@ -13,7 +13,6 @@ const { t } = useI18n()
 const account = useAccountStore()
 const { claimTestUsdc } = useSigningSession()
 const copied = ref(false)
-const showReceive = ref(false)
 const usdcBalance = ref<bigint | undefined>(undefined)
 const claimingUsdc = ref(false)
 const claimUsdcHash = ref<`0x${string}` | undefined>(undefined)
@@ -124,12 +123,10 @@ watch(() => account.address, () => {
 
     <!-- Quick actions -->
     <div class="grid grid-cols-2 gap-2">
-      <Button
-        class="h-11 w-full"
-        :aria-expanded="showReceive"
-        @click="showReceive = !showReceive"
-      >
-        {{ showReceive ? t('hideReceive') : t('receive') }}
+      <Button as-child class="h-11 w-full">
+        <NuxtLink to="/checkout">
+          {{ t('receive') }}
+        </NuxtLink>
       </Button>
       <NuxtLink
         class="flex h-11 items-center justify-center rounded-[18px] border border-[#e5e5e5] bg-white text-[14px] font-medium text-[#0a0a0a] hover:bg-[#fafafa]"
@@ -138,11 +135,6 @@ watch(() => account.address, () => {
         {{ t('homeGoPay') }}
       </NuxtLink>
     </div>
-
-    <PayReceivePanel
-      v-if="showReceive && account.address"
-      :address="account.address"
-    />
 
     <!-- Only nudge claim when mUSDC empty -->
     <div v-if="needsMockUsdc" class="rounded-[24px] border border-dashed border-[#e5e5e5] bg-[#fafafa] p-4">

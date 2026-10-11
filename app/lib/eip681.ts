@@ -34,15 +34,17 @@ export function buildPaymentUri(opts: {
 export function buildErc20TransferUri(opts: {
   token: `0x${string}`
   to: `0x${string}`
-  amount: bigint
+  /** Omit for an "any amount" request: the payer types the amount. */
+  amount?: bigint
   chainId?: number
 }): string {
-  if (opts.amount <= 0n)
+  if (opts.amount !== undefined && opts.amount <= 0n)
     throw new Error('Amount must be greater than 0')
   const chainId = opts.chainId ?? 10143
   const token = getAddress(opts.token)
   const to = getAddress(opts.to)
-  return `ethereum:${token}@${chainId}/transfer?address=${to}&uint256=${opts.amount}`
+  const base = `ethereum:${token}@${chainId}/transfer?address=${to}`
+  return opts.amount === undefined ? base : `${base}&uint256=${opts.amount}`
 }
 
 export function toAppPayPath(uri: string): string {
