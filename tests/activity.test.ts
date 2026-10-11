@@ -122,3 +122,16 @@ describe('activity storage', () => {
     expect(activity.length).toBe(20)
   })
 })
+
+describe('activity token field', () => {
+  const addr = '0x1234567890abcdef1234567890abcdef12345678' as `0x${string}`
+  it('stores USDC sends with token and keeps legacy MON entries readable', () => {
+    store.clear()
+    const s = storeAsStorage()
+    recordPayment(addr, { hash: '0xaa', to: addr, valueWei: '1', at: 1 }, s)
+    const list = recordPayment(addr, { hash: '0xbb', to: addr, valueWei: '2500000', at: 2, token: 'USDC' }, s)
+    expect(list[0]).toMatchObject({ hash: '0xbb', token: 'USDC' })
+    expect(list[1]!.token).toBeUndefined()
+    expect(readActivity(addr, s)).toHaveLength(2)
+  })
+})

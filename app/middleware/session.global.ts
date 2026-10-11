@@ -7,11 +7,11 @@ export default defineNuxtRouteMiddleware((to) => {
     return
 
   const boundAddress = readBoundAddress()
-  const appRoutes = new Set(['/home', '/pay', '/swap', '/checkout', '/settings'])
+  const appRoutes = new Set(['/home', '/pay', '/swap', '/checkout', '/settings', '/receipts'])
   const uri = typeof to.query.uri === 'string' ? to.query.uri : undefined
 
   // Redirect to landing if trying to access app routes without bound address
-  if (appRoutes.has(to.path) && !boundAddress) {
+  if ((appRoutes.has(to.path) || to.path.startsWith('/asset/')) && !boundAddress) {
     if (uri)
       stashPendingPayUri(uri)
     return navigateTo({

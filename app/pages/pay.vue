@@ -9,12 +9,13 @@ import { shortAddress } from '~/lib/format'
 import { formatMon } from '~/lib/ledger'
 import { clearPendingPayUri, readPendingPayUri } from '~/lib/pending-pay-uri'
 import { IS_MOCK_USDC, USDC_ADDRESS } from '~/lib/tokens'
+import { parseAssetParam } from '~/lib/assets'
 import { formatUsdcFromBase, parseUsdcToBase } from '~/lib/usdc-amount'
 
 const { t } = useI18n()
 const route = useRoute()
 const account = useAccountStore()
-const { open, send, sendUsdc, getUsdcBalance } = useSigningSession()
+const { open, send, sendUsdc } = useSigningSession()
 
 type Asset = 'mon' | 'usdc'
 
@@ -25,7 +26,8 @@ definePageMeta({
 const recipient = ref('')
 const amountText = ref('')
 const asset = ref<Asset>('usdc')
-const usdcBalance = ref<bigint>(0n)
+/** Shared with home/asset pages via the account store. */
+const usdcBalance = computed(() => account.usdcBase ?? 0n)
 const localError = ref<string | undefined>()
 const localWarning = ref<string | undefined>()
 const externalPrefill = ref(false)
@@ -279,8 +281,6 @@ async function onSend() {
     return
   success.value = { hash, amount, token, to }
   navigator.vibrate?.(30)
-  if (asset.value === 'usdc')
-    usdcBalance.value = await getUsdcBalance().catch(() => usdcBalance.value)
 }
 
 /** 完成: clear everything and go home. */
@@ -343,6 +343,10 @@ onMounted(async () => {
     account.errorMessage = undefined
   }
   const fromQuery = typeof route.query.uri === 'string' ? route.query.uri : undefined
+  // Asset detail → /pay?asset=mon|usdc preselects the token (a payment URI below wins).
+  const presetAsset = parseAssetParam(route.query.asset)
+  if (presetAsset)
+    asset.value = presetAsset
   const pending = fromQuery ?? readPendingPayUri()
   if (pending) {
     await applyPaymentInput(pending)
@@ -351,17 +355,16 @@ onMounted(async () => {
       await navigateTo({ path: '/pay', query: {} }, { replace: true })
   }
   if (account.address)
-    usdcBalance.value = await getUsdcBalance()
+    void account.refreshBalances()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onWindowKey)
 })
 
-watch(() => account.address, async (address) => {
-  if (address)
-    usdcBalance.value = await getUsdcBalance()
-  else
-    usdcBalance.value = 0n
+watch(() => route.query.asset, (value) => {
+  const next = parseAssetParam(value)
+  if (next && !success.value)
+    setAsset(next)
 })
 </script>
 
@@ -369,10 +372,11 @@ watch(() => account.address, async (address) => {
   <!-- Success: replaces the form, same one-screen frame -->
   <div
     v-if="success"
-    class="flex h-[calc(100dvh-160px)] max-h-[calc(100dvh-160px)] flex-col overflow-hidden"
+    class="flex h-[calc(100dvh-108px)] max-h-[calc(100dvh-108px)] flex-col overflow-hidden"
     role="status"
     aria-live="polite"
   >
+    <PageHeader :title="t('navPay')" />
     <div class="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
       <div class="inline-flex size-16 items-center justify-center rounded-full bg-[#16a34a] animate-[pay-pop_0.4s_ease-out]">
         <Check class="size-8 text-white" :stroke-width="2.5" />
@@ -415,10 +419,11 @@ watch(() => account.address, async (address) => {
 
   <form
     v-else
-    class="flex h-[calc(100dvh-160px)] max-h-[calc(100dvh-160px)] flex-col overflow-hidden"
+    class="flex h-[calc(100dvh-108px)] max-h-[calc(100dvh-108px)] flex-col overflow-hidden"
     @submit.prevent="onSend"
   >
-    <div class="shrink-0 space-y-2">
+    <PageHeader :title="t('navPay')" />
+    <div class="mt-2 shrink-0 space-y-2">
       <div class="flex gap-2">
         <input
           id="pay-recipient"

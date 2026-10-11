@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ChevronRight } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { readAppAuth, clearAppAuth } from '~/lib/app-auth'
 import { clearBoundAddress } from '~/lib/bound-address'
@@ -82,10 +83,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
-    <h1 class="text-[28px] leading-[1.14] font-semibold tracking-[-0.025em]">
-      {{ t('settings') }}
-    </h1>
+  <div class="flex flex-col gap-5">
+    <PageHeader :title="t('settings')" back="/home" />
 
     <!-- GitHub Mock Auth Section -->
     <section v-if="appAuth" class="rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
@@ -163,6 +162,16 @@ onMounted(() => {
         <p class="mt-1 text-[13px] leading-[1.4] text-[#737373]">
           {{ t('accountPasskeyNote') }}
         </p>
+        <NuxtLink
+          to="/receipts"
+          class="mt-1 flex items-center justify-between border-t border-[#e5e5e5] pt-3 text-[14px] leading-[1.43]"
+        >
+          <span>{{ t('receipts') }}</span>
+          <span class="inline-flex items-center gap-1 text-[13px] text-[#737373]">
+            {{ t('receiptsExportHint') }}
+            <ChevronRight class="size-4" :stroke-width="1.75" />
+          </span>
+        </NuxtLink>
       </div>
     </section>
 

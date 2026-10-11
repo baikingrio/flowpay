@@ -5,7 +5,7 @@ import { clearBoundAddress, writeBoundAddress } from '~/lib/bound-address'
 import { clearActivity, readActivity, recordPayment } from '~/lib/activity'
 import { continueThenCreate, isMeraError, PasskeyCancelledError, unlockForSigning } from '~/lib/account'
 import { clearStoredCredentialId, readStoredCredentialId, writeStoredCredentialId } from '~/lib/credential'
-import { readBalance, sendPayment, TxRevertedError } from '~/lib/ledger'
+import { sendPayment, TxRevertedError } from '~/lib/ledger'
 import { clearPendingPayUri } from '~/lib/pending-pay-uri'
 import type { SwapDirection } from '~/lib/swap'
 import { approveUsdc, calculateMinAmountOut, getAmountOut, getRouterAddress, readUsdcAllowance, swapExactETHForTokens, swapExactTokensForETH } from '~/lib/swap'
@@ -43,10 +43,9 @@ function mapError(error: unknown, fallback: string): string {
 export function useSigningSession() {
   const account = useAccountStore()
 
+  /** Balances live in the account store; this is kept for older callers. */
   async function refreshBalance(): Promise<void> {
-    if (account.address === undefined)
-      return
-    account.balanceWei = await readBalance(account.address)
+    await account.refreshBalances({ force: true })
   }
 
   /** Onboarding / recovery only: Passkey continue-or-create, then forget the key. */
@@ -132,6 +131,7 @@ export function useSigningSession() {
     if (account.address === undefined || amountBase <= 0n)
       return undefined
     const usdcBalance = await readUsdcBalance(account.address)
+    account.usdcBase = usdcBalance
     if (usdcBalance < amountBase) {
       account.status = 'error'
       account.errorMessage = 'insufficientUsdc'
@@ -141,6 +141,7 @@ export function useSigningSession() {
     if (!hash)
       return undefined
     account.lastTxHash = hash
+    account.activity = recordPayment(account.address, { hash, to, valueWei: amountBase.toString(), token: 'USDC' })
     void refreshBalance().catch(() => {})
     return hash
   }
@@ -191,7 +192,9 @@ export function useSigningSession() {
   async function getUsdcBalance(): Promise<bigint> {
     if (account.address === undefined)
       return 0n
-    return readUsdcBalance(account.address)
+    const value = await readUsdcBalance(account.address)
+    account.usdcBase = value
+    return value
   }
 
   async function getSwapQuote(amountIn: bigint, direction: SwapDirection): Promise<{ amount: bigint, error?: string }> {
@@ -210,7 +213,7 @@ export function useSigningSession() {
     clearAppAuth()
     clearBoundAddress()
     account.address = undefined
-    account.balanceWei = undefined
+    account.clearBalances()
     account.lastTxHash = undefined
     account.activity = []
     account.errorMessage = undefined

@@ -3,8 +3,11 @@ import { shortAddress } from './format'
 export type ActivityPayment = {
   hash: `0x${string}`
   to: `0x${string}`
+  /** Amount in the token's base units (wei for MON, 6-decimal for USDC). */
   valueWei: string
   at: number
+  /** Absent on entries stored before USDC sends were recorded → MON. */
+  token?: 'MON' | 'USDC'
 }
 
 const MAX_ENTRIES = 20
@@ -47,6 +50,7 @@ export function recordPayment(
     to: entry.to,
     valueWei: entry.valueWei,
     at: entry.at ?? Date.now(),
+    ...(entry.token === 'USDC' ? { token: 'USDC' as const } : {}),
   }
   const list = [next, ...readActivity(address, storage).filter(item => item.hash !== next.hash)].slice(0, MAX_ENTRIES)
   const s = storage ?? defaultStorage()
@@ -73,4 +77,5 @@ function isActivityPayment(value: unknown): value is ActivityPayment {
     && row.to.startsWith('0x')
     && typeof row.valueWei === 'string'
     && typeof row.at === 'number'
+    && (row.token === undefined || row.token === 'MON' || row.token === 'USDC')
 }
