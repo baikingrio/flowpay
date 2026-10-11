@@ -424,12 +424,12 @@ watch(() => route.query.asset, (value) => {
   >
     <PageHeader :title="t('navPay')" />
     <div class="mt-2 shrink-0 space-y-2">
-      <div class="flex gap-2">
+      <div class="relative">
         <input
           id="pay-recipient"
           ref="toField"
           v-model="recipient"
-          class="h-9 min-w-0 flex-1 rounded-2xl bg-[#f5f5f5] px-2.5 text-[13px] leading-[1.4] text-[#0a0a0a] outline-none placeholder:text-[#737373] focus:bg-transparent focus:ring-1 focus:ring-[#e5e5e5]"
+          class="h-9 w-full min-w-0 rounded-2xl bg-[#f5f5f5] pr-10 pl-2.5 text-[13px] leading-[1.4] text-[#0a0a0a] outline-none placeholder:text-[#737373] focus:bg-transparent focus:ring-1 focus:ring-[#e5e5e5]"
           :placeholder="t('payToPlaceholder')"
           :aria-label="t('payTo')"
           autocomplete="off"
@@ -439,7 +439,7 @@ watch(() => route.query.asset, (value) => {
           @keydown.enter.prevent
           @paste="onRecipientPaste"
         >
-        <PayScanControl @detected="applyPaymentInput" />
+        <PayScanControl class="absolute inset-y-0 right-0" @detected="applyPaymentInput" />
       </div>
 
       <div v-if="recentRecipients.length" class="flex gap-1.5 overflow-x-auto pb-0.5">

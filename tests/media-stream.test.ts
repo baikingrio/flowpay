@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { keepCurrentMediaStream, keepCurrentScannerControls } from '../app/lib/media-stream'
+import { classifyCameraError, keepCurrentMediaStream, keepCurrentScannerControls, trackSupportsTorch } from '../app/lib/media-stream'
 
 describe('keepCurrentMediaStream', () => {
   it('returns the stream while its camera generation is current', () => {
@@ -34,3 +34,30 @@ function fakeStream() {
 
   return { ...stream, stop }
 }
+
+describe('classifyCameraError', () => {
+  it('treats permission errors as denied', () => {
+    expect(classifyCameraError({ name: 'NotAllowedError' })).toBe('denied')
+    expect(classifyCameraError({ name: 'SecurityError' })).toBe('denied')
+  })
+
+  it('treats everything else as unavailable', () => {
+    expect(classifyCameraError({ name: 'NotFoundError' })).toBe('unavailable')
+    expect(classifyCameraError(new Error('x'))).toBe('unavailable')
+    expect(classifyCameraError(undefined)).toBe('unavailable')
+  })
+})
+
+describe('trackSupportsTorch', () => {
+  it('detects torch capability', () => {
+    const track = { getCapabilities: () => ({ torch: true }) } as unknown as MediaStreamTrack
+    expect(trackSupportsTorch(track)).toBe(true)
+  })
+
+  it('is false without getCapabilities or torch', () => {
+    expect(trackSupportsTorch(undefined)).toBe(false)
+    expect(trackSupportsTorch({} as MediaStreamTrack)).toBe(false)
+    expect(trackSupportsTorch({ getCapabilities: () => ({}) } as unknown as MediaStreamTrack)).toBe(false)
+    expect(trackSupportsTorch({ getCapabilities: () => { throw new Error('x') } } as unknown as MediaStreamTrack)).toBe(false)
+  })
+})
