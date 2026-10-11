@@ -1,3 +1,4 @@
+import { readActivity } from '~/lib/activity'
 import { readBoundAddress } from '~/lib/bound-address'
 
 export default defineNuxtPlugin(() => {
@@ -7,10 +8,9 @@ export default defineNuxtPlugin(() => {
   const account = useAccountStore()
   const boundAddress = readBoundAddress()
 
-  // Hydrate account store from localStorage on client mount
+  // The remembered address is the account; no biometric needed to view it.
   if (boundAddress) {
     account.address = boundAddress
-    account.sessionExpired = false
-    // hasSession stays false until open() is called
+    account.activity = readActivity(boundAddress)
   }
 })

@@ -3,7 +3,7 @@ const account = useAccountStore()
 const { refreshBalance } = useSigningSession()
 
 onMounted(() => {
-  if (account.hasSession)
+  if (account.address)
     void refreshBalance()
 })
 </script>

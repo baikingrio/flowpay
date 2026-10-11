@@ -9,9 +9,8 @@ import { shortTxHash } from '~/lib/activity'
 
 const { t, locale, setLocale } = useI18n()
 const account = useAccountStore()
-const { lock: lockSession, signOut, claimTestUsdc } = useSigningSession()
+const { signOut, claimTestUsdc } = useSigningSession()
 const router = useRouter()
-const now = ref(Date.now())
 const showClearConfirm = ref(false)
 const copiedAddress = ref(false)
 const appAuth = ref<ReturnType<typeof readAppAuth>>()
@@ -19,7 +18,7 @@ const claimingUsdc = ref(false)
 const claimUsdcHash = ref<`0x${string}` | undefined>(undefined)
 
 async function onClaimUsdc() {
-  if (claimingUsdc.value || !account.hasSession)
+  if (claimingUsdc.value || !account.address)
     return
   claimingUsdc.value = true
   claimUsdcHash.value = undefined
@@ -35,26 +34,6 @@ async function onClaimUsdc() {
 
 definePageMeta({
   layout: 'shell',
-})
-
-let tick: ReturnType<typeof setInterval> | undefined
-onMounted(() => {
-  tick = setInterval(() => {
-    now.value = Date.now()
-  }, 1000)
-})
-onBeforeUnmount(() => {
-  if (tick)
-    clearInterval(tick)
-})
-
-const remaining = computed(() => {
-  if (!account.expiresAt)
-    return undefined
-  const ms = account.expiresAt - now.value
-  if (ms <= 0)
-    return 0
-  return Math.ceil(ms / 1000)
 })
 
 const explorerBase = 'https://testnet.monadexplorer.com'
@@ -73,11 +52,6 @@ function toggleLocale() {
   setLocale(locale.value === 'zh-CN' ? 'en' : 'zh-CN')
 }
 
-function handleLock() {
-  lockSession()
-  void router.replace('/')
-}
-
 function handleClearLocal() {
   signOut()
   showClearConfirm.value = false
@@ -85,7 +59,7 @@ function handleClearLocal() {
 }
 
 function handleGithubMockLogout() {
-  lockSession()
+  signOut()
   clearAppAuth()
   clearBoundAddress()
   void router.replace('/')
@@ -187,40 +161,7 @@ onMounted(() => {
         {{ t('settingsSession') }}
       </h2>
       <div class="mt-4 flex flex-col gap-4">
-        <div class="flex items-center justify-between">
-          <span class="text-[14px] leading-[1.43] text-[#737373]">{{ t('sessionRemaining') }}</span>
-          <span class="text-[14px] leading-[1.43] font-medium tabular-nums">
-            <template v-if="remaining !== undefined && remaining > 0">
-              {{ Math.floor(remaining / 60) }}:{{ String(remaining % 60).padStart(2, '0') }}
-            </template>
-            <template v-else>
-              {{ t('sessionExpired') }}
-            </template>
-          </span>
-        </div>
-
-        <div class="border-t border-[#e5e5e5] pt-4">
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0 flex-1">
-              <p class="text-[14px] leading-[1.43] font-medium">
-                {{ t('sessionLockAction') }}
-              </p>
-              <p class="mt-1 text-[13px] leading-[1.4] text-[#737373]">
-                {{ t('sessionLockDescription') }}
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              class="shrink-0 border-[#e5e5e5] bg-white shadow-none"
-              @click="handleLock"
-            >
-              {{ t('sessionLockAction') }}
-            </Button>
-          </div>
-        </div>
-
-        <div v-if="!showClearConfirm" class="border-t border-[#e5e5e5] pt-4">
+        <div v-if="!showClearConfirm">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0 flex-1">
               <p class="text-[14px] leading-[1.43] font-medium">
@@ -302,7 +243,7 @@ onMounted(() => {
             {{ t('faucet') }}
           </NuxtLink>
           <Button
-            v-if="IS_MOCK_USDC && account.hasSession"
+            v-if="IS_MOCK_USDC && account.address"
             variant="outline"
             class="h-10 w-full border-[#e5e5e5] bg-white shadow-none"
             :disabled="claimingUsdc"

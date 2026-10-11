@@ -242,7 +242,7 @@ function exportTodayLedger() {
 }
 
 onMounted(async () => {
-  if (!account.hasSession) {
+  if (!account.address) {
     await open()
   }
   const intent = readCheckoutIntent()
