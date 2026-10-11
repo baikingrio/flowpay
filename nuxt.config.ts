@@ -21,6 +21,13 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/tailwind.css'],
 
+  // SPA client, but server/api routes (MON faucet) still deploy as Vercel functions.
+  nitro: {
+    vercel: {
+      functions: { maxDuration: 30 },
+    },
+  },
+
   app: {
     head: {
       title: 'Flowpay',

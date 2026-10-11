@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ChevronRight, QrCode, Send, Settings } from '@lucide/vue'
-import { FAUCET_URL } from '~/lib/chain'
 import type { AssetId } from '~/lib/assets'
 import { assetMeta, formatTokenAmount } from '~/lib/assets'
 import { formatUnitPrice, formatUsd, portfolioUsd, USDC_USD_PRICE } from '~/lib/price'
@@ -130,14 +129,9 @@ onMounted(() => {
       </ul>
     </section>
 
-    <ClaimMusdcCard />
-
-    <p v-if="account.balanceWei === 0n" class="px-1 text-[13px] leading-[1.4] text-[#737373]">
-      {{ t('faucetNeed') }}
-      <NuxtLink class="underline" :to="FAUCET_URL" external>
-        {{ t('faucet') }}
-      </NuxtLink>
-    </p>
+    <!-- New user: Step 1 MON (gas) → Step 2 mUSDC. Otherwise just top up MON when low. -->
+    <OnboardingCard v-if="IS_MOCK_USDC" />
+    <ClaimMonCard v-if="!IS_MOCK_USDC || (account.usdcBase ?? 0n) > 0n" />
 
     <p class="px-1 text-[12px] leading-[1.4] text-[#a3a3a3]">
       {{ portfolio.includesMon ? t('homePriceNote') : t('homePriceUnavailable') }}

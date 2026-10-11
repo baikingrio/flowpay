@@ -1,8 +1,8 @@
-import { createWalletClient, http, type Address } from 'viem'
+import { createWalletClient, type Address } from 'viem'
 import { toViemAccount } from '@category-labs/mera/viem'
 import type { Secp256k1SigningSession } from '@category-labs/mera'
 
-import { chain } from './chain'
+import { chain, rpcTransport } from './chain'
 import { IS_MOCK_USDC, USDC_ADDRESS } from './tokens'
 import { getPublicClient, waitForSuccess } from './ledger'
 
@@ -52,7 +52,7 @@ export async function sendUsdcTransfer(
   const wallet = createWalletClient({
     account,
     chain,
-    transport: http(),
+    transport: rpcTransport(),
   })
 
   const hash = await wallet.writeContract({
@@ -82,7 +82,7 @@ export async function claimMockUsdc(
   const wallet = createWalletClient({
     account,
     chain,
-    transport: http(),
+    transport: rpcTransport(),
   })
 
   const hash = await wallet.writeContract({

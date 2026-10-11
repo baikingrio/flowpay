@@ -91,7 +91,8 @@ watch(() => account.balancesUpdatedAt, () => {
       </NuxtLink>
     </div>
 
-    <ClaimMusdcCard v-if="assetId === 'usdc'" />
+    <OnboardingCard v-if="assetId === 'usdc'" />
+    <ClaimMonCard v-else-if="assetId === 'mon'" />
 
     <section class="rounded-[24px] border border-[#e5e5e5] bg-white p-2 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
       <div class="flex items-center justify-between px-3 pt-2 pb-1">

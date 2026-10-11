@@ -1,6 +1,14 @@
+import { fallback, http } from 'viem'
 import { monadTestnet } from 'viem/chains'
 
+import { MONAD_TESTNET_RPCS } from '../../shared/faucet'
+
 export const chain = monadTestnet
+
+/** Monad testnet transport with RPC fallback (single RPCs have had TLS / empty-response outages). */
+export function rpcTransport() {
+  return fallback(MONAD_TESTNET_RPCS.map(url => http(url, { timeout: 10_000 })))
+}
 
 export const FAUCET_URL = 'https://faucet.monad.xyz'
 

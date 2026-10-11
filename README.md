@@ -34,7 +34,26 @@ forge create contracts/MockUSDC.sol:MockUSDC \
   --private-key $DEPLOYER_PRIVATE_KEY
 ```
 
-把部署地址写入 `app/lib/tokens.ts` 的 `USDC_ADDRESS`。MON 仍用 [Monad 水龙头](https://faucet.monad.xyz/) 或人工转入。
+把部署地址写入 `app/lib/tokens.ts` 的 `USDC_ADDRESS`。
+
+## 应用内 MON 水龙头（Gas）
+
+新账户一个 MON 都没有，无法付 Gas 去领 mUSDC。应用内的「领取测试 MON」由服务端接口 `POST /api/faucet/mon` 从一个专用钱包转出一小笔 MON（不需要指纹）。首页新用户会看到「① 领取 MON（Gas）→ ② 领取 mUSDC」两步卡片。
+
+- **水龙头地址**：`0x8726959f2332A562F850418F38c533A94FbB0D6B`（Monad testnet）
+- **补充余额**：直接往上面的地址转测试网 MON 即可。余额低于「单次额度 + 0.01 MON Gas 预留」时接口返回 `faucet_empty`，界面会改为提示外部 [Monad 水龙头](https://faucet.monad.xyz/)。
+- **查看状态**：`GET /api/faucet/status` → `{ configured, address, amount, funded }`（不含任何密钥信息）。
+- **规则**：每次 0.05 MON；只有收款地址余额 < 0.02 MON 才发（链上检查，是主要限流手段）；同一 IP / 地址 10 分钟冷却（内存实现，仅单个函数实例内有效）。
+- **错误码**：`invalid_address` 400 · `has_balance` 409 · `cooldown` 429 · `faucet_empty` / `faucet_unconfigured` 503 · `send_failed` 502。
+
+环境变量（Vercel → Settings → Environment Variables，Production + Preview）：
+
+| 变量 | 必填 | 说明 |
+|------|------|------|
+| `FAUCET_PRIVATE_KEY` | 是 | 水龙头钱包私钥，设为 Sensitive。只放在 Vercel，**不要提交到仓库或写进任何文档**。 |
+| `FAUCET_MON_AMOUNT` | 否 | 单次发放数量（十进制 MON），默认 `0.05`，上限 `1`。 |
+
+RPC 按顺序回退：drpc → testnet-rpc.monad.xyz → tenderly（见 `shared/faucet.ts`）。策略逻辑在 `shared/faucet.ts`，测试见 `tests/faucet.test.ts`。
 
 
 ---
