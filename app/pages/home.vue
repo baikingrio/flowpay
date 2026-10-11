@@ -1,217 +1,146 @@
 <script setup lang="ts">
-import { Copy, Check } from '@lucide/vue'
-import { Button } from '@/components/ui/button'
+import { ChevronRight, QrCode, Send, Settings } from '@lucide/vue'
 import { FAUCET_URL } from '~/lib/chain'
-import { shortTxHash } from '~/lib/activity'
-import { shortAddress } from '~/lib/format'
-import { formatMon } from '~/lib/ledger'
+import type { AssetId } from '~/lib/assets'
+import { assetMeta, formatTokenAmount } from '~/lib/assets'
+import { formatUnitPrice, formatUsd, portfolioUsd, USDC_USD_PRICE } from '~/lib/price'
 import { IS_MOCK_USDC } from '~/lib/tokens'
-import { formatUsdcFromBase } from '~/lib/usdc-amount'
-import { readUsdcBalance } from '~/lib/usdc'
 
 const { t } = useI18n()
 const account = useAccountStore()
-const { claimTestUsdc } = useSigningSession()
-const copied = ref(false)
-const usdcBalance = ref<bigint | undefined>(undefined)
-const claimingUsdc = ref(false)
-const claimUsdcHash = ref<`0x${string}` | undefined>(undefined)
-const claimLabel = computed(() => {
-  if (!claimingUsdc.value)
-    return t('faucetClaimMock')
-  if (account.status === 'opening')
-    return t('payVerifying')
-  if (account.status === 'confirming')
-    return t('payConfirming')
-  return t('faucetClaiming')
-})
 
 definePageMeta({
   layout: 'shell',
 })
 
-const explorerBase = 'https://testnet.monadexplorer.com/tx/'
+const portfolio = computed(() => portfolioUsd({
+  monWei: account.balanceWei,
+  usdcBase: account.usdcBase,
+  monPriceUsd: account.monPriceUsd,
+}))
 
-const needsMockUsdc = computed(() =>
-  IS_MOCK_USDC
-  && account.address
-  && (usdcBalance.value === undefined || usdcBalance.value === 0n),
-)
+const loaded = computed(() => account.balanceWei !== undefined || account.usdcBase !== undefined)
 
-async function copyAddress() {
-  if (!account.address)
-    return
-  await navigator.clipboard.writeText(account.address)
-  copied.value = true
-  window.setTimeout(() => {
-    copied.value = false
-  }, 1500)
+interface AssetRow {
+  id: AssetId
+  symbol: string
+  name: string
+  slug: string
+  amount: string
+  usd: string
+  unitPrice: string
 }
 
-async function refreshUsdc() {
-  if (!account.address) {
-    usdcBalance.value = undefined
-    return
-  }
-  try {
-    usdcBalance.value = await readUsdcBalance(account.address)
-  }
-  catch {
-    usdcBalance.value = undefined
-  }
-}
-
-async function onClaimUsdc() {
-  if (claimingUsdc.value || !account.address)
-    return
-  claimingUsdc.value = true
-  claimUsdcHash.value = undefined
-  try {
-    const hash = await claimTestUsdc()
-    if (hash) {
-      claimUsdcHash.value = hash
-      navigator.vibrate?.(30)
-      await refreshUsdc()
+const rows = computed<AssetRow[]>(() => {
+  const ids: AssetId[] = ['usdc', 'mon']
+  return ids.map((id) => {
+    const meta = assetMeta(id, IS_MOCK_USDC)
+    const base = id === 'mon' ? account.balanceWei : account.usdcBase
+    const usd = id === 'mon' ? portfolio.value.monUsd : portfolio.value.usdcUsd
+    const price = id === 'mon' ? account.monPriceUsd : USDC_USD_PRICE
+    return {
+      id,
+      symbol: meta.symbol,
+      name: meta.name,
+      slug: meta.slug,
+      amount: base === undefined ? '—' : formatTokenAmount(base, meta.decimals),
+      usd: base === undefined ? '—' : formatUsd(usd),
+      unitPrice: formatUnitPrice(price),
     }
-  }
-  finally {
-    claimingUsdc.value = false
-  }
-}
-
-onMounted(() => {
-  void refreshUsdc()
+  })
 })
 
-watch(() => account.address, () => {
-  void refreshUsdc()
+onMounted(() => {
+  void account.refreshBalances()
 })
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
-    <!-- Balance card -->
-    <section class="rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
-      <p class="text-[13px] leading-[1.4] text-[#737373]">
-        {{ t('homeBalance') }}
-      </p>
-      <p class="mt-2 text-[36px] leading-[1.11] font-semibold tracking-[-0.025em] tabular-nums">
-        <template v-if="account.balanceWei === undefined">
-          —
-        </template>
-        <template v-else>
-          {{ formatMon(account.balanceWei) }}
-          <span class="text-[16px] font-medium tracking-normal text-[#737373]">MON</span>
-        </template>
-      </p>
-      <p class="mt-1 text-[20px] font-medium tabular-nums text-[#0a0a0a]">
-        <template v-if="usdcBalance === undefined">
-          —
-        </template>
-        <template v-else>
-          {{ formatUsdcFromBase(usdcBalance) }}
-          <span class="text-[14px] font-medium text-[#737373]">{{ IS_MOCK_USDC ? 'mUSDC' : 'USDC' }}</span>
-        </template>
-      </p>
-
-      <div
-        v-if="account.address"
-        class="mt-4 flex items-center gap-1.5 text-[14px] leading-[1.43] text-[#737373]"
+  <div class="flex flex-col gap-5">
+    <header class="flex h-10 items-center justify-between gap-3">
+      <AccountChip />
+      <NuxtLink
+        to="/settings"
+        class="inline-flex size-10 shrink-0 items-center justify-center rounded-full text-[#737373] transition-colors hover:bg-black/5 hover:text-[#0a0a0a] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0a0a0a]"
+        :aria-label="t('navSettings')"
       >
-        <span class="font-mono tabular-nums">{{ shortAddress(account.address) }}</span>
-        <button
-          type="button"
-          class="inline-flex size-7 items-center justify-center rounded-lg text-[#737373] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
-          :aria-label="copied ? t('copied') : t('copy')"
-          @click="copyAddress"
-        >
-          <Check v-if="copied" class="size-3.5" :stroke-width="2" />
-          <Copy v-else class="size-3.5" :stroke-width="1.75" />
-        </button>
-      </div>
+        <Settings class="size-5" :stroke-width="1.75" />
+      </NuxtLink>
+    </header>
+
+    <!-- Total -->
+    <section class="px-1 pt-2">
+      <p class="text-[13px] leading-[1.4] text-[#737373]">
+        {{ t('homeTotal') }} · {{ portfolio.includesMon ? t('homeTotalApprox') : t('homeTotalNoMon') }}
+      </p>
+      <p class="mt-1 text-[40px] leading-[1.1] font-semibold tracking-[-0.035em] tabular-nums">
+        {{ loaded ? formatUsd(portfolio.total) : '—' }}
+      </p>
     </section>
 
     <!-- Quick actions -->
     <div class="grid grid-cols-2 gap-2">
-      <Button as-child class="h-11 w-full">
-        <NuxtLink to="/checkout">
-          {{ t('receive') }}
-        </NuxtLink>
-      </Button>
       <NuxtLink
-        class="flex h-11 items-center justify-center rounded-[18px] border border-[#e5e5e5] bg-white text-[14px] font-medium text-[#0a0a0a] hover:bg-[#fafafa]"
-        to="/pay"
+        to="/checkout"
+        class="flex h-12 items-center justify-center gap-2 rounded-[18px] bg-[#0a0a0a] text-[14px] font-medium text-[#fafafa] transition-opacity hover:opacity-90"
       >
-        {{ t('homeGoPay') }}
+        <QrCode class="size-4" :stroke-width="2" />
+        {{ t('receive') }}
+      </NuxtLink>
+      <NuxtLink
+        to="/pay"
+        class="flex h-12 items-center justify-center gap-2 rounded-[18px] border border-[#e5e5e5] bg-white text-[14px] font-medium text-[#0a0a0a] transition-colors hover:bg-[#fafafa]"
+      >
+        <Send class="size-4" :stroke-width="2" />
+        {{ t('navPay') }}
       </NuxtLink>
     </div>
 
-    <!-- Only nudge claim when mUSDC empty -->
-    <div v-if="needsMockUsdc || claimUsdcHash" class="rounded-[24px] border border-dashed border-[#e5e5e5] bg-[#fafafa] p-4">
-      <p v-if="needsMockUsdc" class="text-[14px] leading-[1.43] text-[#737373]">
-        {{ t('homeNeedMockUsdc') }}
-      </p>
-      <Button
-        v-if="needsMockUsdc"
-        variant="outline"
-        class="mt-3 w-full border-[#e5e5e5] bg-white shadow-none"
-        :disabled="claimingUsdc"
-        @click="onClaimUsdc"
-      >
-        {{ claimLabel }}
-      </Button>
-      <p v-if="claimUsdcHash" class="text-[13px] leading-[1.4] text-[#16a34a]" role="status">
-        <span class="font-medium">{{ t('faucetClaimedAmount', { amount: '100', token: 'mUSDC' }) }}</span> ·
-        <NuxtLink class="underline" :to="`${explorerBase}${claimUsdcHash}`" external>
-          {{ shortTxHash(claimUsdcHash) }}
-        </NuxtLink>
-      </p>
-      <p v-if="account.errorMessage === 'faucetClaimFailed'" class="mt-2 text-[13px] leading-[1.4] text-[#b91c1c]">
-        {{ t('faucetClaimFailed') }}
-      </p>
-    </div>
+    <!-- Assets -->
+    <section class="rounded-[24px] border border-[#e5e5e5] bg-white p-2 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
+      <h2 class="px-3 pt-2 pb-1 text-[13px] font-medium text-[#737373]">
+        {{ t('assets') }}
+      </h2>
+      <ul>
+        <li v-for="row in rows" :key="row.id">
+          <NuxtLink
+            :to="`/asset/${row.slug}`"
+            class="flex items-center gap-3 rounded-[18px] px-3 py-3 transition-colors hover:bg-[#f5f5f5] active:bg-[#f0f0f0]"
+          >
+            <TokenIcon :asset="row.id" />
+            <div class="min-w-0 flex-1">
+              <p class="text-[15px] leading-[1.35] font-medium">
+                {{ row.symbol }}
+              </p>
+              <p class="truncate text-[12px] leading-[1.4] text-[#737373]">
+                {{ row.name }} · {{ row.unitPrice }}
+              </p>
+            </div>
+            <div class="text-right">
+              <p class="text-[15px] leading-[1.35] font-medium tabular-nums">
+                {{ row.amount }}
+              </p>
+              <p class="text-[12px] leading-[1.4] text-[#737373] tabular-nums">
+                {{ row.usd }}
+              </p>
+            </div>
+            <ChevronRight class="size-4 shrink-0 text-[#a3a3a3]" :stroke-width="1.75" />
+          </NuxtLink>
+        </li>
+      </ul>
+    </section>
 
-    <p v-if="account.balanceWei === 0n" class="text-[14px] leading-[1.43] text-[#737373]">
+    <ClaimMusdcCard />
+
+    <p v-if="account.balanceWei === 0n" class="px-1 text-[13px] leading-[1.4] text-[#737373]">
       {{ t('faucetNeed') }}
       <NuxtLink class="underline" :to="FAUCET_URL" external>
         {{ t('faucet') }}
       </NuxtLink>
     </p>
 
-    <section class="rounded-[24px] border border-[#e5e5e5] bg-white p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
-      <h2 class="text-[18px] leading-[1.56] font-medium">
-        {{ t('history') }}
-      </h2>
-      <p class="mt-1 text-[14px] leading-[1.43] text-[#737373]">
-        {{ t('historyLocal') }}
-      </p>
-
-      <ul v-if="account.activity.length > 0" class="mt-4 flex flex-col gap-3">
-        <li
-          v-for="item in account.activity"
-          :key="item.hash"
-          class="flex items-start justify-between gap-3 text-[14px] leading-[1.43]"
-        >
-          <div class="min-w-0">
-            <p class="font-medium tabular-nums text-[#0a0a0a]">
-              −{{ formatMon(BigInt(item.valueWei)) }} MON
-            </p>
-            <p class="mt-0.5 truncate text-[#737373]">
-              {{ t('payTo') }} {{ shortAddress(item.to) }}
-            </p>
-          </div>
-          <NuxtLink
-            class="shrink-0 underline"
-            :to="`${explorerBase}${item.hash}`"
-            external
-          >
-            {{ shortTxHash(item.hash) }}
-          </NuxtLink>
-        </li>
-      </ul>
-      <p v-else class="mt-4 text-[14px] leading-[1.43] text-[#737373]">
-        {{ t('historyEmpty') }}
-      </p>
-    </section>
+    <p class="px-1 text-[12px] leading-[1.4] text-[#a3a3a3]">
+      {{ portfolio.includesMon ? t('homePriceNote') : t('homePriceUnavailable') }}
+    </p>
   </div>
 </template>

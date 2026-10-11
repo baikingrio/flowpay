@@ -8,14 +8,18 @@ const flags = useFeatureFlags()
 
 const tabs = computed(() => {
   const allTabs = [
-    { to: '/home', label: t('navHome'), icon: House },
-    { to: '/pay', label: t('navPay'), icon: Send },
-    { to: '/checkout', label: t('navCheckout'), icon: QrCode },
-    { to: '/swap', label: t('navSwap'), icon: ArrowLeftRight, requiresFlag: 'swap' as const },
+    { to: '/home', label: t('navHome'), icon: House, match: ['/home', '/asset/', '/settings'] },
+    { to: '/pay', label: t('navPay'), icon: Send, match: ['/pay'] },
+    { to: '/checkout', label: t('navCheckout'), icon: QrCode, match: ['/checkout', '/receipts'] },
+    { to: '/swap', label: t('navSwap'), icon: ArrowLeftRight, match: ['/swap'], requiresFlag: 'swap' as const },
   ]
   // Filter out tabs that require feature flags when the flag is disabled
   return allTabs.filter(tab => !tab.requiresFlag || flags[tab.requiresFlag])
 })
+
+function isActive(match: string[]): boolean {
+  return match.some(prefix => route.path === prefix || (prefix.endsWith('/') && route.path.startsWith(prefix)))
+}
 </script>
 
 <template>
@@ -28,8 +32,8 @@ const tabs = computed(() => {
         <NuxtLink
           :to="tab.to"
           class="flex h-full flex-col items-center justify-center gap-1 text-[12px] leading-[1.33] font-medium"
-          :class="route.path === tab.to ? 'text-[#0a0a0a]' : 'text-[#737373]'"
-          :aria-current="route.path === tab.to ? 'page' : undefined"
+          :class="isActive(tab.match) ? 'text-[#0a0a0a]' : 'text-[#737373]'"
+          :aria-current="isActive(tab.match) ? 'page' : undefined"
         >
           <component :is="tab.icon" class="size-5" :stroke-width="1.75" />
           {{ tab.label }}

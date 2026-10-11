@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Copy, Delete } from '@lucide/vue'
+import { Check, ChevronRight, Clock, Copy, Delete, ExternalLink, Link2 } from '@lucide/vue'
 import { parseEther } from 'viem'
 import { Button } from '@/components/ui/button'
 import { formatUsdcFromBase, parseUsdcToBase } from '~/lib/usdc-amount'
@@ -11,11 +11,15 @@ import { formatMon, getPublicClient, readBalance } from '~/lib/ledger'
 import { encodeQrDataUrl } from '~/lib/qr-encode'
 import { blockRanges } from '~/lib/block-ranges'
 import { shortAddress } from '~/lib/format'
-import { readCheckoutLedger, recordCheckoutReceipt, summarizeToday, exportReceiptsAsCSV, downloadCSV, isSameLocalDay } from '~/lib/checkout-ledger'
+import { readCheckoutLedger, recordCheckoutReceipt, summarizeToday } from '~/lib/checkout-ledger'
+import { parseAssetParam } from '~/lib/assets'
+import { formatCountdown, remainingMs } from '~/lib/countdown'
+import { shortTxHash } from '~/lib/activity'
 import type { ReceiveAsset } from '~/lib/receive'
 import { buildReceivePayLink, buildReceiveUri, matchNativeArrival, receiptTokenFor } from '~/lib/receive'
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
+const route = useRoute()
 const account = useAccountStore()
 const { open } = useSigningSession()
 
@@ -43,6 +47,15 @@ const ledgerTick = ref(0)
 const copied = ref<'address' | 'uri' | 'link'>()
 const starting = ref(false)
 const startError = ref(false)
+/** Countdown to the 5-minute window of the live request. */
+const pendingStartedAt = ref<number | undefined>()
+const now = ref(Date.now())
+let clockTimer: ReturnType<typeof setInterval> | undefined
+const countdownText = computed(() =>
+  pendingStartedAt.value === undefined
+    ? ''
+    : formatCountdown(remainingMs(pendingStartedAt.value, now.value, CHECKOUT_WINDOW_MS)),
+)
 
 const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'] as const
 
@@ -81,15 +94,6 @@ const todaySummary = computed(() => {
   if (!account.address)
     return summarizeToday([])
   return summarizeToday(readCheckoutLedger(account.address))
-})
-
-const todayTotalText = computed(() => {
-  const parts: string[] = []
-  if (todaySummary.value.totalBase > 0n || todaySummary.value.totalMonWei === 0n)
-    parts.push(`${formatUsdcFromBase(todaySummary.value.totalBase)} ${usdcLabel}`)
-  if (todaySummary.value.totalMonWei > 0n)
-    parts.push(`${formatMon(todaySummary.value.totalMonWei)} MON`)
-  return parts.join(' · ')
 })
 
 function setAsset(next: ReceiveAsset) {
@@ -226,6 +230,8 @@ function startOver() {
 /** Self-scheduling loop: one poll in flight at a time, next one queued only after it finishes. */
 function startPolling(intent: CheckoutIntent) {
   stopPolling()
+  pendingStartedAt.value = intent.startedAt
+  now.value = Date.now()
   const id = intent.id ?? newCheckoutRequestId()
   gate.begin(id)
   scanCursor = intent.startBlock !== undefined ? intent.startBlock - 1n : undefined
@@ -274,6 +280,8 @@ function markSuccess(id: string, intent: CheckoutIntent, hash?: `0x${string}`) {
   matchedTxHash.value = hash
   ledgerTick.value++
   state.value = 'success'
+  // Funds just moved: home/asset pages must not show the old balance.
+  void account.refreshBalances({ force: true })
   playSuccessSound()
   navigator.vibrate?.(30)
   stopPolling()
@@ -371,15 +379,39 @@ async function copy(value: string, kind: 'address' | 'uri' | 'link') {
   }, 1500)
 }
 
-function exportTodayLedger() {
-  if (!account.address)
-    return
-  const entries = readCheckoutLedger(account.address)
-  const todayEntries = entries.filter(entry => isSameLocalDay(entry.receivedAt))
-  const csv = exportReceiptsAsCSV(todayEntries, { locale: locale.value })
-  const today = new Date().toISOString().split('T')[0]
-  downloadCSV(csv, `flowpay-ledger-${today}.csv`)
+/** 完成: back to home with a clean receive page. */
+async function finish() {
+  startOver()
+  await navigateTo('/home')
 }
+
+/** Timeout → same amount and token, fresh request. */
+async function retryCheckout() {
+  stopPolling()
+  clearCheckoutIntent()
+  state.value = 'idle'
+  await startCheckout()
+}
+
+// Asset detail → /checkout?asset=mon while this page is already open.
+watch(() => route.query.asset, (value) => {
+  const next = parseAssetParam(value)
+  if (next && state.value === 'idle')
+    setAsset(next)
+})
+
+watch(state, (next) => {
+  if (next === 'pending' && clockTimer === undefined) {
+    now.value = Date.now()
+    clockTimer = setInterval(() => {
+      now.value = Date.now()
+    }, 1000)
+  }
+  else if (next !== 'pending' && clockTimer !== undefined) {
+    clearInterval(clockTimer)
+    clockTimer = undefined
+  }
+})
 
 onMounted(async () => {
   const intent = readCheckoutIntent()
@@ -391,11 +423,19 @@ onMounted(async () => {
     state.value = 'pending'
     startPolling(intent)
   }
+  else {
+    const fromQuery = parseAssetParam(route.query.asset)
+    if (fromQuery)
+      asset.value = fromQuery
+  }
   ledgerTick.value++
 })
 
 onBeforeUnmount(() => {
   stopPolling()
+  if (clockTimer !== undefined)
+    clearInterval(clockTimer)
+  clockTimer = undefined
 })
 
 function playSuccessSound() {
@@ -424,29 +464,30 @@ function playSuccessSound() {
 </script>
 
 <template>
-  <div class="flex h-[calc(100dvh-160px)] max-h-[calc(100dvh-160px)] flex-col overflow-hidden">
-    <!-- Idle: token + amount + keypad -->
-    <div v-if="state === 'idle'" class="flex min-h-0 flex-1 flex-col">
-      <div class="flex shrink-0 items-baseline justify-between gap-2">
-        <h1 class="text-[16px] font-semibold tracking-[-0.02em]">
-          {{ t('checkout') }}
-        </h1>
-        <p class="truncate text-[12px] text-[#737373]">
-          <template v-if="todaySummary.count > 0">
-            {{ t('todayLedgerSummary', { count: todaySummary.count, total: todayTotalText }) }}
-          </template>
-          <template v-else>
-            {{ t('todayLedgerEmpty') }}
-          </template>
-        </p>
-      </div>
+  <div class="flex h-[calc(100dvh-108px)] max-h-[calc(100dvh-108px)] flex-col overflow-hidden">
+    <PageHeader :title="t('checkout')">
+      <template v-if="state === 'idle'" #right>
+        <NuxtLink
+          to="/receipts"
+          class="inline-flex h-8 max-w-[60%] items-center gap-0.5 rounded-full px-2.5 text-[12px] text-[#737373] transition-colors hover:bg-black/5 hover:text-[#0a0a0a]"
+        >
+          <span class="truncate">
+            <template v-if="todaySummary.count > 0">{{ t('todayCountShort', { count: todaySummary.count }) }}</template>
+            <template v-else>{{ t('receipts') }}</template>
+          </span>
+          <ChevronRight class="size-3.5 shrink-0" :stroke-width="1.75" />
+        </NuxtLink>
+      </template>
+    </PageHeader>
 
-      <div class="mt-2 flex shrink-0 items-end justify-between gap-3">
-        <div class="flex gap-1.5" role="group" :aria-label="t('receiveToken')">
+    <!-- Idle: token switch + amount + keypad -->
+    <div v-if="state === 'idle'" class="flex min-h-0 flex-1 flex-col pt-2">
+      <div class="flex shrink-0 justify-center">
+        <div class="inline-flex rounded-full bg-[#e9e9e9] p-1" role="group" :aria-label="t('receiveToken')">
           <button
             type="button"
-            class="h-8 rounded-xl px-3 text-[12px] font-medium"
-            :class="asset === 'usdc' ? 'bg-[#0a0a0a] text-[#fafafa]' : 'bg-[#f5f5f5] text-[#737373]'"
+            class="h-8 rounded-full px-4 text-[13px] font-medium transition-colors"
+            :class="asset === 'usdc' ? 'bg-white text-[#0a0a0a] shadow-[0_1px_2px_rgba(0,0,0,0.1)]' : 'text-[#737373]'"
             :aria-pressed="asset === 'usdc'"
             @click="setAsset('usdc')"
           >
@@ -454,21 +495,27 @@ function playSuccessSound() {
           </button>
           <button
             type="button"
-            class="h-8 rounded-xl px-3 text-[12px] font-medium"
-            :class="asset === 'mon' ? 'bg-[#0a0a0a] text-[#fafafa]' : 'bg-[#f5f5f5] text-[#737373]'"
+            class="h-8 rounded-full px-4 text-[13px] font-medium transition-colors"
+            :class="asset === 'mon' ? 'bg-white text-[#0a0a0a] shadow-[0_1px_2px_rgba(0,0,0,0.1)]' : 'text-[#737373]'"
             :aria-pressed="asset === 'mon'"
             @click="setAsset('mon')"
           >
             MON
           </button>
         </div>
-        <p class="min-w-0 truncate text-right text-[36px] leading-[1.1] font-semibold tracking-[-0.04em] tabular-nums">
-          <span :class="amountText ? 'text-[#0a0a0a]' : 'text-[#737373]'">{{ amountText || '0' }}</span>
-          <span class="ml-1 text-[14px] font-medium tracking-normal text-[#737373]">{{ assetLabel }}</span>
+      </div>
+
+      <div class="flex min-h-[64px] flex-1 flex-col items-center justify-center text-center">
+        <p class="max-w-full truncate text-[44px] leading-[1.1] font-semibold tracking-[-0.04em] tabular-nums">
+          <span :class="amountText ? 'text-[#0a0a0a]' : 'text-[#c4c4c4]'">{{ amountText || '0' }}</span>
+          <span class="ml-1.5 text-[16px] font-medium tracking-normal text-[#737373]">{{ assetLabel }}</span>
+        </p>
+        <p v-if="startError" class="mt-1 truncate text-[12px] text-[#e7000b]">
+          {{ t('receiveStartFailed') }}
         </p>
       </div>
 
-      <div class="mt-3 shrink-0 grid grid-cols-3 gap-2 rounded-[24px] border border-[#e5e5e5] bg-white p-3 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
+      <div class="shrink-0 grid grid-cols-3 gap-2 rounded-[24px] border border-[#e5e5e5] bg-white p-3 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_-1px_rgba(0,0,0,0.1)]">
         <button
           v-for="key in keys"
           :key="key"
@@ -482,189 +529,189 @@ function playSuccessSound() {
         </button>
       </div>
 
-      <p v-if="startError" class="mt-2 shrink-0 truncate text-[12px] text-[#e7000b]">
-        {{ t('receiveStartFailed') }}
-      </p>
-
       <div class="mt-2 flex shrink-0 gap-2">
         <Button
-          v-if="todaySummary.count > 0"
           variant="outline"
           class="h-10 flex-1 border-[#e5e5e5] bg-white shadow-none"
-          @click="exportTodayLedger"
-        >
-          {{ t('exportCSV') }}
-        </Button>
-        <Button
-          v-if="hasAmount"
-          class="h-10 flex-[2]"
           :disabled="starting"
-          @click="onPrimary"
-        >
-          {{ t('receiveCreateCode') }}
-        </Button>
-        <Button
-          v-else
-          variant="outline"
-          class="h-10 flex-[2] border-[#e5e5e5] bg-white shadow-none"
-          @click="onPrimary"
+          @click="showAddressCode"
         >
           {{ t('receiveAnyAmount') }}
+        </Button>
+        <Button
+          class="h-10 flex-[1.4]"
+          :disabled="!hasAmount || starting"
+          @click="onPrimary"
+        >
+          {{ starting ? t('opening') : t('receiveCreateCode') }}
         </Button>
       </div>
     </div>
 
     <!-- Any amount: address code, no arrival detection -->
-    <div v-else-if="state === 'address'" class="flex min-h-0 flex-1 flex-col">
+    <div v-else-if="state === 'address'" class="flex min-h-0 flex-1 flex-col items-center pt-2">
       <div class="shrink-0 text-center">
-        <p class="text-[22px] font-semibold tracking-[-0.03em]">
+        <p class="text-[28px] leading-[1.15] font-semibold tracking-[-0.03em]">
           {{ t('receiveAnyAmountTitle') }}
-          <span class="text-[14px] font-medium text-[#737373]">{{ assetLabel }}</span>
+          <span class="text-[15px] font-medium tracking-normal text-[#737373]">{{ assetLabel }}</span>
         </p>
         <p class="mt-1 text-[13px] text-[#737373]">
           {{ t('receiveAnyAmountHint') }}
         </p>
       </div>
 
-      <div class="flex min-h-0 flex-1 items-center justify-center py-2">
-        <div class="rounded-2xl border border-[#e5e5e5] bg-white p-3 shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
+      <div class="flex min-h-0 w-full flex-1 items-center justify-center py-3">
+        <div class="flex flex-col items-center rounded-[24px] border border-[#e5e5e5] bg-white p-4 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1)]">
           <img
             v-if="qrDataUri"
             :src="qrDataUri"
             :alt="t('receiveQrAlt')"
-            class="size-[min(42vw,180px)]"
+            class="size-[min(56vw,220px,32dvh)]"
           >
-        </div>
-      </div>
-
-      <div class="shrink-0 space-y-2">
-        <div
-          v-if="account.address"
-          class="flex items-center justify-center gap-1.5 text-[14px] leading-[1.43] text-[#737373]"
-        >
-          <span class="font-mono tabular-nums">{{ shortAddress(account.address) }}</span>
           <button
+            v-if="account.address"
             type="button"
-            class="inline-flex size-7 items-center justify-center rounded-lg text-[#737373] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+            class="mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] text-[#737373] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
             :aria-label="copied === 'address' ? t('copied') : t('copy')"
             @click="copy(account.address, 'address')"
           >
-            <Check v-if="copied === 'address'" class="size-3.5" :stroke-width="2" />
+            <span class="font-mono tabular-nums">{{ shortAddress(account.address) }}</span>
+            <Check v-if="copied === 'address'" class="size-3.5 text-[#16a34a]" :stroke-width="2" />
             <Copy v-else class="size-3.5" :stroke-width="1.75" />
           </button>
         </div>
-        <div class="flex gap-2">
-          <Button
-            variant="outline"
-            class="h-10 flex-1 border-[#e5e5e5] bg-white shadow-none"
-            @click="backToKeypad"
-          >
-            {{ t('back') }}
-          </Button>
-          <Button
-            variant="outline"
-            class="h-10 flex-1 border-[#e5e5e5] bg-white shadow-none"
-            @click="copy(paymentLink, 'link')"
-          >
-            {{ copied === 'link' ? t('copiedLink') : t('copyPayLink') }}
-          </Button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Pending: compact QR -->
-    <div v-else-if="state === 'pending'" class="flex min-h-0 flex-1 flex-col">
-      <div class="shrink-0 text-center">
-        <p class="text-[28px] font-semibold tracking-[-0.03em] tabular-nums">
-          {{ displayAmount }}
-          <span class="text-[14px] font-medium text-[#737373]">{{ assetLabel }}</span>
-        </p>
-        <p class="mt-1 text-[13px] text-[#737373]">
-          {{ t('checkoutWaiting') }}
-        </p>
       </div>
 
-      <div class="flex min-h-0 flex-1 items-center justify-center py-2">
-        <div class="rounded-2xl border border-[#e5e5e5] bg-white p-3 shadow-[0_1px_3px_rgba(0,0,0,0.08)]">
-          <img
-            v-if="qrDataUri"
-            :src="qrDataUri"
-            :alt="t('receiveQrAlt')"
-            class="size-[min(42vw,180px)]"
-          >
-        </div>
-      </div>
-
-      <div class="shrink-0 space-y-2">
-        <div class="flex gap-2">
-          <Button
-            variant="outline"
-            class="h-9 flex-1 border-[#e5e5e5] bg-white text-[13px] shadow-none"
-            @click="copy(paymentUri, 'uri')"
-          >
-            {{ copied === 'uri' ? t('copiedUri') : t('copyUri') }}
-          </Button>
-          <Button
-            variant="outline"
-            class="h-9 flex-1 border-[#e5e5e5] bg-white text-[13px] shadow-none"
-            @click="copy(paymentLink, 'link')"
-          >
-            {{ copied === 'link' ? t('copiedLink') : t('copyPayLink') }}
-          </Button>
-        </div>
+      <div class="flex w-full shrink-0 gap-2">
         <Button
           variant="outline"
-          class="h-10 w-full border-[#e5e5e5] bg-white shadow-none"
-          @click="cancelCheckout"
+          class="h-10 flex-1 border-[#e5e5e5] bg-white shadow-none"
+          @click="backToKeypad"
         >
-          {{ t('cancel') }}
+          {{ t('back') }}
+        </Button>
+        <Button
+          variant="outline"
+          class="h-10 flex-1 border-[#e5e5e5] bg-white shadow-none"
+          @click="copy(paymentLink, 'link')"
+        >
+          {{ copied === 'link' ? t('copiedLink') : t('copyPayLink') }}
         </Button>
       </div>
     </div>
 
-    <!-- Success -->
-    <div v-else-if="state === 'success'" class="flex min-h-0 flex-1 flex-col">
-      <div class="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
-        <div class="inline-flex items-center justify-center rounded-full bg-[#16a34a] p-5 animate-[scale-in_0.4s_ease-out]">
-          <p class="text-[40px] leading-none font-bold text-white">
-            ✓
-          </p>
-        </div>
-        <p class="mt-4 text-[28px] font-bold tracking-[-0.025em] text-[#16a34a] tabular-nums">
+    <!-- Pending: amount + status + QR -->
+    <div v-else-if="state === 'pending'" class="flex min-h-0 flex-1 flex-col items-center pt-2">
+      <div class="flex shrink-0 flex-col items-center text-center">
+        <p class="text-[36px] leading-[1.1] font-semibold tracking-[-0.035em] tabular-nums">
           {{ displayAmount }}
-          <span class="text-[14px] font-medium">{{ assetLabel }}</span>
+          <span class="text-[15px] font-medium tracking-normal text-[#737373]">{{ assetLabel }}</span>
         </p>
-        <p class="mt-1 text-[15px] font-semibold">
+        <p class="mt-2 inline-flex h-7 items-center gap-2 rounded-full bg-[#fff7ed] px-3 text-[12px] font-medium text-[#c2410c]" role="status" aria-live="polite">
+          <span class="relative flex size-2">
+            <span class="absolute inline-flex size-full animate-ping rounded-full bg-[#fb923c] opacity-75" />
+            <span class="relative inline-flex size-2 rounded-full bg-[#f97316]" />
+          </span>
+          {{ t('checkoutWaitingPill') }}
+          <span class="tabular-nums text-[#9a3412]/80">{{ countdownText }}</span>
+        </p>
+      </div>
+
+      <div class="flex min-h-0 w-full flex-1 items-center justify-center py-3">
+        <div class="flex flex-col items-center rounded-[24px] border border-[#e5e5e5] bg-white p-4 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1)]">
+          <img
+            v-if="qrDataUri"
+            :src="qrDataUri"
+            :alt="t('receiveQrAlt')"
+            class="size-[min(56vw,220px,32dvh)]"
+          >
+          <button
+            type="button"
+            class="mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] text-[#737373] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
+            @click="copy(paymentLink, 'link')"
+          >
+            <Check v-if="copied === 'link'" class="size-3.5 text-[#16a34a]" :stroke-width="2" />
+            <Link2 v-else class="size-3.5" :stroke-width="1.75" />
+            {{ copied === 'link' ? t('copiedLink') : t('copyPayLink') }}
+          </button>
+        </div>
+      </div>
+
+      <Button
+        variant="outline"
+        class="h-10 w-full shrink-0 border-[#e5e5e5] bg-white shadow-none"
+        @click="cancelCheckout"
+      >
+        {{ t('cancel') }}
+      </Button>
+    </div>
+
+    <!-- Success -->
+    <div v-else-if="state === 'success'" class="flex min-h-0 flex-1 flex-col" role="status" aria-live="polite">
+      <div class="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
+        <div class="inline-flex size-20 items-center justify-center rounded-full bg-[#16a34a] animate-[scale-in_0.4s_ease-out]">
+          <Check class="size-10 text-white" :stroke-width="2.5" />
+        </div>
+        <p class="mt-4 text-[15px] font-semibold">
           {{ t('checkoutSuccess') }}
         </p>
-        <p v-if="explorerHref" class="mt-2 text-[13px]">
-          <NuxtLink class="underline" :to="explorerHref" external>
-            {{ t('explorer') }}
-          </NuxtLink>
+        <p class="mt-1 text-[36px] leading-[1.1] font-semibold tracking-[-0.035em] tabular-nums">
+          +{{ displayAmount }}
+          <span class="text-[15px] font-medium tracking-normal text-[#737373]">{{ assetLabel }}</span>
         </p>
-        <p v-else-if="asset === 'mon'" class="mt-2 text-[12px] text-[#737373]">
+        <NuxtLink
+          v-if="explorerHref && matchedTxHash"
+          class="mt-3 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[13px] text-[#0a0a0a] shadow-[0_0_0_1px_rgba(23,23,23,0.06)] hover:bg-[#fafafa]"
+          :to="explorerHref"
+          external
+        >
+          {{ shortTxHash(matchedTxHash) }}
+          <ExternalLink class="size-3.5" :stroke-width="1.75" />
+        </NuxtLink>
+        <p v-else-if="asset === 'mon'" class="mt-3 text-[12px] text-[#737373]">
           {{ t('receiveMonNoHash') }}
         </p>
       </div>
-      <Button class="mt-2 h-10 w-full shrink-0" @click="startOver">
-        {{ t('checkoutAgain') }}
-      </Button>
+      <div class="flex shrink-0 gap-2 pt-2">
+        <Button
+          variant="outline"
+          class="h-10 flex-1 border-[#e5e5e5] bg-white shadow-none"
+          @click="finish"
+        >
+          {{ t('payDone') }}
+        </Button>
+        <Button class="h-10 flex-[1.4]" @click="startOver">
+          {{ t('checkoutAgain') }}
+        </Button>
+      </div>
     </div>
 
     <!-- Timeout -->
     <div v-else-if="state === 'timeout'" class="flex min-h-0 flex-1 flex-col">
       <div class="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
-        <p class="text-[28px] font-semibold tabular-nums">
+        <div class="inline-flex size-16 items-center justify-center rounded-full bg-[#ebebeb] text-[#737373]">
+          <Clock class="size-8" :stroke-width="1.75" />
+        </div>
+        <p class="mt-4 text-[32px] leading-[1.1] font-semibold tracking-[-0.03em] tabular-nums">
           {{ displayAmount }}
-          <span class="text-[14px] font-medium text-[#737373]">{{ assetLabel }}</span>
+          <span class="text-[15px] font-medium tracking-normal text-[#737373]">{{ assetLabel }}</span>
         </p>
         <p class="mt-2 text-[14px] text-[#737373]">
-          {{ t('checkoutTimeout') }}
+          {{ t('checkoutTimeoutHint') }}
         </p>
       </div>
-      <Button class="mt-2 h-10 w-full shrink-0" @click="startOver">
-        {{ t('checkoutAgain') }}
-      </Button>
+      <div class="flex shrink-0 gap-2 pt-2">
+        <Button
+          variant="outline"
+          class="h-10 flex-1 border-[#e5e5e5] bg-white shadow-none"
+          @click="startOver"
+        >
+          {{ t('back') }}
+        </Button>
+        <Button class="h-10 flex-[1.4]" :disabled="starting" @click="retryCheckout">
+          {{ t('checkoutRetry') }}
+        </Button>
+      </div>
     </div>
   </div>
 </template>
