@@ -116,6 +116,15 @@
     --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* Shell geometry shared by layouts/shell.vue, AppTabBar and one-screen pages. */
+:root {
+    --tabbar-h: calc(72px + env(safe-area-inset-bottom));
+    --shell-pt: calc(env(safe-area-inset-top) + 12px);
+    --tabbar-gap: 16px;
+    /* Height a one-screen page may use so its last button clears the tab bar. */
+    --screen-h: calc(100dvh - var(--shell-pt) - var(--tabbar-h) - var(--tabbar-gap));
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

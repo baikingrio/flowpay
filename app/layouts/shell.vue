@@ -60,8 +60,8 @@ watch(() => account.address, refresh)
   <div
     class="min-h-dvh bg-[#f5f5f5] pt-[env(safe-area-inset-top)] text-[#0a0a0a] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
   >
-    <div class="mx-auto flex min-h-dvh w-full max-w-[min(100%,430px)] flex-col">
-      <main class="flex-1 px-5 pt-3 pb-24">
+    <div class="mx-auto flex min-h-[calc(100dvh-env(safe-area-inset-top))] w-full max-w-[min(100%,430px)] flex-col">
+      <main class="flex-1 px-5 pt-3 pb-[calc(var(--tabbar-h)+var(--tabbar-gap))]">
         <slot />
       </main>
       <AppTabBar />

@@ -132,9 +132,5 @@ onMounted(() => {
     <!-- New user: Step 1 MON (gas) → Step 2 mUSDC. Otherwise just top up MON when low. -->
     <OnboardingCard v-if="IS_MOCK_USDC" />
     <ClaimMonCard v-if="!IS_MOCK_USDC || (account.usdcBase ?? 0n) > 0n" />
-
-    <p class="px-1 text-[12px] leading-[1.4] text-[#a3a3a3]">
-      {{ portfolio.includesMon ? t('homePriceNote') : t('homePriceUnavailable') }}
-    </p>
   </div>
 </template>

@@ -371,7 +371,7 @@ watch(() => route.query.asset, (value) => {
   <!-- Success: replaces the form, same one-screen frame -->
   <div
     v-if="success"
-    class="flex h-[calc(100dvh-108px)] max-h-[calc(100dvh-108px)] flex-col overflow-hidden"
+    class="flex h-(--screen-h) max-h-(--screen-h) flex-col overflow-hidden"
     role="status"
     aria-live="polite"
   >
@@ -418,7 +418,7 @@ watch(() => route.query.asset, (value) => {
 
   <form
     v-else
-    class="flex h-[calc(100dvh-108px)] max-h-[calc(100dvh-108px)] flex-col overflow-hidden"
+    class="flex h-(--screen-h) max-h-(--screen-h) flex-col overflow-hidden"
     @submit.prevent="onSend"
   >
     <PageHeader :title="t('navPay')" />
