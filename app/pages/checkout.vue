@@ -464,7 +464,7 @@ function playSuccessSound() {
 </script>
 
 <template>
-  <div class="flex h-[calc(100dvh-108px)] max-h-[calc(100dvh-108px)] flex-col overflow-hidden">
+  <div class="flex h-(--screen-h) max-h-(--screen-h) flex-col overflow-hidden">
     <PageHeader :title="t('checkout')">
       <template v-if="state === 'idle'" #right>
         <NuxtLink
