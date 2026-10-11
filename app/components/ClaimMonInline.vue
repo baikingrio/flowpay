@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMonFaucet } from '~/composables/useMonFaucet'
 import { FAUCET_URL } from '~/lib/chain'
 
 /** One-line variant for tight spots (pay page status line). */

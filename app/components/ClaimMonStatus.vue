@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMonFaucet } from '~/composables/useMonFaucet'
 import { shortTxHash } from '~/lib/activity'
 import { FAUCET_URL } from '~/lib/chain'
 

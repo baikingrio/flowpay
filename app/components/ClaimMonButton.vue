@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMonFaucet } from '~/composables/useMonFaucet'
 import { Button } from '@/components/ui/button'
 import { FAUCET_URL } from '~/lib/chain'
 
