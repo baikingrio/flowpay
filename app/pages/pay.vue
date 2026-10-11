@@ -2,7 +2,6 @@
 import { Check, Delete } from '@lucide/vue'
 import { isAddress, parseEther, type Address } from 'viem'
 import { Button } from '@/components/ui/button'
-import { FAUCET_URL } from '~/lib/chain'
 import { parsePaymentUri, unwrapPaymentInput, type ParsePaymentUriFailure } from '~/lib/eip681'
 import { resolveEnsName } from '~/lib/ens'
 import { shortAddress } from '~/lib/format'
@@ -502,12 +501,13 @@ watch(() => route.query.asset, (value) => {
         :class="statusTone === 'error' ? 'text-[#e7000b]' : 'text-[#737373]'"
       >
         <template v-if="localError || account.errorMessage">{{ t(localError || account.errorMessage || '') }}</template>
-        <template v-else-if="insufficientGas">{{ t('insufficientGas') }}</template>
+        <template v-else-if="insufficientGas">
+          <ClaimMonInline :prefix="t('insufficientGasShort')" />
+        </template>
         <template v-else-if="insufficient">{{ t(asset === 'usdc' ? 'insufficientUsdc' : 'insufficient') }}</template>
         <template v-else-if="localWarning">{{ t(localWarning) }}</template>
         <template v-else-if="account.balanceWei === 0n">
-          {{ t('faucetNeed') }}
-          <NuxtLink class="underline" :to="FAUCET_URL" external>{{ t('faucet') }}</NuxtLink>
+          <ClaimMonInline :prefix="t('faucetNeed')" />
         </template>
       </p>
 

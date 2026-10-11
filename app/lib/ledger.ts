@@ -1,15 +1,15 @@
-import { createPublicClient, createWalletClient, formatEther, http, type PublicClient } from 'viem'
+import { createPublicClient, createWalletClient, formatEther, type PublicClient } from 'viem'
 import { toViemAccount } from '@category-labs/mera/viem'
 import type { Secp256k1SigningSession } from '@category-labs/mera'
 
-import { chain } from './chain'
+import { chain, rpcTransport } from './chain'
 
 let publicClient: PublicClient | undefined
 
 export function getPublicClient(): PublicClient {
   publicClient ??= createPublicClient({
     chain,
-    transport: http(),
+    transport: rpcTransport(),
   })
   return publicClient
 }
@@ -49,7 +49,7 @@ export async function sendPayment(
   const wallet = createWalletClient({
     account,
     chain,
-    transport: http(),
+    transport: rpcTransport(),
   })
   const hash = await wallet.sendTransaction({ to, value })
   onBroadcast?.(hash)

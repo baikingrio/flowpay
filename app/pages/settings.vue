@@ -3,7 +3,6 @@ import { ChevronRight } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { readAppAuth, clearAppAuth } from '~/lib/app-auth'
 import { clearBoundAddress } from '~/lib/bound-address'
-import { FAUCET_URL } from '~/lib/chain'
 import { shortAddress } from '~/lib/format'
 import { IS_MOCK_USDC } from '~/lib/tokens'
 import { shortTxHash } from '~/lib/activity'
@@ -255,13 +254,8 @@ onMounted(() => {
           <span class="text-[14px] leading-[1.43]">{{ t('networkName') }}</span>
         </div>
         <div class="flex flex-col gap-2">
-          <NuxtLink
-            class="flex h-10 items-center justify-center rounded-[18px] border border-[#e5e5e5] bg-white text-[14px] font-medium hover:bg-[#fafafa]"
-            :to="FAUCET_URL"
-            external
-          >
-            {{ t('faucet') }}
-          </NuxtLink>
+          <ClaimMonButton v-if="account.address" />
+          <ClaimMonStatus />
           <Button
             v-if="IS_MOCK_USDC && account.address"
             variant="outline"
