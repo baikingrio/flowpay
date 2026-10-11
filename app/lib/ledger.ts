@@ -22,10 +22,28 @@ export function formatMon(value: bigint): string {
   return formatEther(value)
 }
 
+/** Transaction was mined but reverted. */
+export class TxRevertedError extends Error {
+  constructor(readonly hash: `0x${string}`) {
+    super(`Transaction reverted: ${hash}`)
+    this.name = 'TxRevertedError'
+  }
+}
+
+/** Wait for the receipt; throws TxRevertedError if the tx reverted. */
+export async function waitForSuccess(hash: `0x${string}`): Promise<`0x${string}`> {
+  const receipt = await getPublicClient().waitForTransactionReceipt({ hash })
+  if (receipt.status !== 'success')
+    throw new TxRevertedError(hash)
+  return hash
+}
+
+/** Native MON transfer: broadcast, report the hash, then wait until it is mined. */
 export async function sendPayment(
   session: Secp256k1SigningSession,
   to: `0x${string}`,
   value: bigint,
+  onBroadcast?: (hash: `0x${string}`) => void,
 ): Promise<`0x${string}`> {
   const account = toViemAccount(session)
   const wallet = createWalletClient({
@@ -33,5 +51,7 @@ export async function sendPayment(
     chain,
     transport: http(),
   })
-  return wallet.sendTransaction({ to, value })
+  const hash = await wallet.sendTransaction({ to, value })
+  onBroadcast?.(hash)
+  return waitForSuccess(hash)
 }

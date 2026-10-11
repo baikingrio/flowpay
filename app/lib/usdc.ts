@@ -4,7 +4,7 @@ import type { Secp256k1SigningSession } from '@category-labs/mera'
 
 import { chain } from './chain'
 import { IS_MOCK_USDC, USDC_ADDRESS } from './tokens'
-import { getPublicClient } from './ledger'
+import { getPublicClient, waitForSuccess } from './ledger'
 
 const ERC20_ABI = [
   {
@@ -46,6 +46,7 @@ export async function sendUsdcTransfer(
   session: Secp256k1SigningSession,
   to: Address,
   amountBase: bigint,
+  onBroadcast?: (hash: `0x${string}`) => void,
 ): Promise<`0x${string}`> {
   const account = toViemAccount(session)
   const wallet = createWalletClient({
@@ -61,18 +62,18 @@ export async function sendUsdcTransfer(
     args: [to, amountBase],
   })
 
-  const client = getPublicClient()
-  const receipt = await client.waitForTransactionReceipt({ hash })
-  if (receipt.status !== 'success')
-    throw new Error('USDC transfer failed')
-
-  return hash
+  onBroadcast?.(hash)
+  return waitForSuccess(hash)
 }
 
+
+/** 100 mUSDC per claim (MockUSDC.CLAIM_AMOUNT). */
+export const MOCK_USDC_CLAIM_BASE = 100_000_000n
 
 /** Claim Mock USDC via on-chain faucet (no server). No-op / throws if not mock. */
 export async function claimMockUsdc(
   session: Secp256k1SigningSession,
+  onBroadcast?: (hash: `0x${string}`) => void,
 ): Promise<`0x${string}`> {
   if (!IS_MOCK_USDC)
     throw new Error('Mock USDC claim is disabled for Circle USDC')
@@ -90,10 +91,6 @@ export async function claimMockUsdc(
     functionName: 'claim',
   })
 
-  const client = getPublicClient()
-  const receipt = await client.waitForTransactionReceipt({ hash })
-  if (receipt.status !== 'success')
-    throw new Error('Mock USDC claim failed')
-
-  return hash
+  onBroadcast?.(hash)
+  return waitForSuccess(hash)
 }

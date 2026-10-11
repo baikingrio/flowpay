@@ -16,6 +16,15 @@ const copiedAddress = ref(false)
 const appAuth = ref<ReturnType<typeof readAppAuth>>()
 const claimingUsdc = ref(false)
 const claimUsdcHash = ref<`0x${string}` | undefined>(undefined)
+const claimLabel = computed(() => {
+  if (!claimingUsdc.value)
+    return t('faucetClaimMock')
+  if (account.status === 'opening')
+    return t('payVerifying')
+  if (account.status === 'confirming')
+    return t('payConfirming')
+  return t('faucetClaiming')
+})
 
 async function onClaimUsdc() {
   if (claimingUsdc.value || !account.address)
@@ -24,8 +33,10 @@ async function onClaimUsdc() {
   claimUsdcHash.value = undefined
   try {
     const hash = await claimTestUsdc()
-    if (hash)
+    if (hash) {
       claimUsdcHash.value = hash
+      navigator.vibrate?.(30)
+    }
   }
   finally {
     claimingUsdc.value = false
@@ -249,10 +260,10 @@ onMounted(() => {
             :disabled="claimingUsdc"
             @click="onClaimUsdc"
           >
-            {{ claimingUsdc ? t('faucetClaiming') : t('faucetClaimMock') }}
+            {{ claimLabel }}
           </Button>
-          <p v-if="claimUsdcHash" class="text-[13px] leading-[1.4] text-[#737373]">
-            {{ t('faucetClaimed') }}
+          <p v-if="claimUsdcHash" class="text-[13px] leading-[1.4] text-[#16a34a]" role="status">
+            <span class="font-medium">{{ t('faucetClaimedAmount', { amount: '100', token: 'mUSDC' }) }}</span> ·
             <NuxtLink class="underline" :to="`${explorerBase}/tx/${claimUsdcHash}`" external>
               {{ shortTxHash(claimUsdcHash) }}
             </NuxtLink>

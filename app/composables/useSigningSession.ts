@@ -5,7 +5,7 @@ import { clearBoundAddress, writeBoundAddress } from '~/lib/bound-address'
 import { clearActivity, readActivity, recordPayment } from '~/lib/activity'
 import { continueThenCreate, isMeraError, PasskeyCancelledError, unlockForSigning } from '~/lib/account'
 import { clearStoredCredentialId, readStoredCredentialId, writeStoredCredentialId } from '~/lib/credential'
-import { readBalance, sendPayment } from '~/lib/ledger'
+import { readBalance, sendPayment, TxRevertedError } from '~/lib/ledger'
 import { clearPendingPayUri } from '~/lib/pending-pay-uri'
 import type { SwapDirection } from '~/lib/swap'
 import { approveUsdc, calculateMinAmountOut, getAmountOut, getRouterAddress, readUsdcAllowance, swapExactETHForTokens, swapExactTokensForETH } from '~/lib/swap'
@@ -33,6 +33,8 @@ function mapError(error: unknown, fallback: string): string {
     return 'cancelled'
   if (error instanceof PasskeyMismatchError)
     return 'passkeyMismatch'
+  if (error instanceof TxRevertedError)
+    return 'txReverted'
   if (isMeraError(error) && error.code === 'PRF_UNAVAILABLE')
     return 'prfUnavailable'
   return fallback
@@ -91,6 +93,11 @@ export function useSigningSession() {
     }
   }
 
+  /** Called once the tx is broadcast: UI switches from 发送中 to 确认中. */
+  function onBroadcast(): void {
+    account.status = 'confirming'
+  }
+
   async function runSigned<T>(fallbackError: string, fn: (session: Secp256k1SigningSession) => Promise<T>): Promise<T | undefined> {
     account.status = 'opening'
     account.errorMessage = undefined
@@ -106,37 +113,43 @@ export function useSigningSession() {
     }
   }
 
-  async function send(to: `0x${string}`, value: bigint): Promise<void> {
+  /** Resolves with the hash only after the tx is mined successfully. */
+  async function send(to: `0x${string}`, value: bigint): Promise<`0x${string}` | undefined> {
     if (account.balanceWei === undefined || value <= 0n || account.balanceWei <= value)
-      return
-    const hash = await runSigned('sendFailed', session => sendPayment(session, to, value))
+      return undefined
+    const hash = await runSigned('sendFailed', session => sendPayment(session, to, value, onBroadcast))
     if (!hash)
-      return
+      return undefined
     account.lastTxHash = hash
     if (account.address !== undefined) {
       account.activity = recordPayment(account.address, { hash, to, valueWei: value.toString() })
     }
-    await refreshBalance().catch(() => {})
+    void refreshBalance().catch(() => {})
+    return hash
   }
 
-  async function sendUsdc(to: `0x${string}`, amountBase: bigint): Promise<void> {
+  async function sendUsdc(to: `0x${string}`, amountBase: bigint): Promise<`0x${string}` | undefined> {
     if (account.address === undefined || amountBase <= 0n)
-      return
+      return undefined
     const usdcBalance = await readUsdcBalance(account.address)
     if (usdcBalance < amountBase) {
       account.status = 'error'
       account.errorMessage = 'insufficientUsdc'
-      return
+      return undefined
     }
-    const hash = await runSigned('sendFailed', session => sendUsdcTransfer(session, to, amountBase))
+    const hash = await runSigned('sendFailed', session => sendUsdcTransfer(session, to, amountBase, onBroadcast))
     if (!hash)
-      return
+      return undefined
     account.lastTxHash = hash
-    await refreshBalance().catch(() => {})
+    void refreshBalance().catch(() => {})
+    return hash
   }
 
   async function claimTestUsdc(): Promise<`0x${string}` | undefined> {
-    const hash = await runSigned('faucetClaimFailed', session => claimMockUsdc(session))
+    const hash = await runSigned('faucetClaimFailed', session => claimMockUsdc(session, onBroadcast))
+    // A reverted claim is almost always the 30-min cooldown.
+    if (!hash && account.errorMessage === 'txReverted')
+      account.errorMessage = 'faucetClaimFailed'
     if (hash) {
       account.lastTxHash = hash
       await refreshBalance().catch(() => {})
