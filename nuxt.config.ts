@@ -39,6 +39,12 @@ export default defineNuxtConfig({
           name: 'description',
           content: '像流水一样顺畅的链上支付与账户体验',
         },
+        { name: 'theme-color', content: '#0a0a0a' },
+      ],
+      link: [
+        { rel: 'icon', href: '/favicon.ico', sizes: 'any' },
+        { rel: 'icon', type: 'image/png', href: '/favicon-32x32.png', sizes: '32x32' },
+        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png', sizes: '180x180' },
       ],
     },
   },
