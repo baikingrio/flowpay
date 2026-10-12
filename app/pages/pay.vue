@@ -9,7 +9,7 @@ import { formatMon } from '~/lib/ledger'
 import { clearPendingPayUri, readPendingPayUri } from '~/lib/pending-pay-uri'
 import { IS_MOCK_USDC, USDC_ADDRESS } from '~/lib/tokens'
 import { parseAssetParam } from '~/lib/assets'
-import { amountPresetsFor, formatMaxPayAmount } from '~/lib/pay-amount'
+import { PAY_AMOUNT_PERCENTS, formatMaxPayAmount, formatPercentPayAmount } from '~/lib/pay-amount'
 import { formatUsdcFromBase, parseUsdcToBase } from '~/lib/usdc-amount'
 
 const { t } = useI18n()
@@ -104,8 +104,7 @@ const canPay = computed(() => {
   return account.balanceWei !== undefined && account.balanceWei > parsedAmount.value
 })
 
-const amountPresets = computed(() => amountPresetsFor(asset.value))
-/** Max sendable amount text for the current asset; undefined → Max chip disabled. */
+/** Max sendable amount text for the current asset; undefined → percent/Max chips disabled. */
 const maxAmountText = computed(() => {
   if (!account.address)
     return undefined
@@ -114,7 +113,20 @@ const maxAmountText = computed(() => {
     balanceWei: account.balanceWei,
   })
 })
-const maxChipEnabled = computed(() => maxAmountText.value !== undefined && !busy.value)
+const balanceArgs = computed(() => ({
+  usdcBase: account.usdcBase,
+  balanceWei: account.balanceWei,
+}))
+const percentChips = computed(() =>
+  PAY_AMOUNT_PERCENTS.map(percent => ({
+    percent,
+    label: `${percent}%`,
+    amount: account.address
+      ? formatPercentPayAmount(asset.value, balanceArgs.value, percent)
+      : undefined,
+  })),
+)
+const amountChipsEnabled = computed(() => maxAmountText.value !== undefined && !busy.value)
 const isMaxActive = computed(() =>
   maxAmountText.value !== undefined && amountText.value === maxAmountText.value,
 )
@@ -177,12 +189,18 @@ function pressKey(key: typeof keys[number]) {
   amountText.value = next
 }
 
-/** Quick-amount chip: same field the keypad writes. */
-function applyPreset(value: string) {
-  if (busy.value || success.value)
+/** Percent chip: floor(max × percent / 100). No-op when chips are unavailable. */
+function applyPercent(percent: typeof PAY_AMOUNT_PERCENTS[number]) {
+  if (busy.value || success.value || !account.address)
     return
+  const next = formatPercentPayAmount(asset.value, balanceArgs.value, percent)
+  if (next === undefined) {
+    if (asset.value === 'mon' || (account.balanceWei !== undefined && account.balanceWei === 0n))
+      localError.value = 'insufficientGas'
+    return
+  }
   localError.value = undefined
-  amountText.value = value
+  amountText.value = next
 }
 
 /** Max: full mUSDC, or MON minus gas reserve. No-op when Max is unavailable. */
@@ -519,17 +537,17 @@ watch(() => route.query.asset, (value) => {
 
       <div class="flex gap-1.5" role="group" :aria-label="t('payQuickAmounts')">
         <button
-          v-for="preset in amountPresets"
-          :key="preset"
+          v-for="chip in percentChips"
+          :key="chip.percent"
           type="button"
           class="h-7 min-w-0 flex-1 rounded-full border px-2 text-[12px] font-medium tabular-nums transition-colors disabled:opacity-40"
-          :class="amountText === preset
+          :class="chip.amount !== undefined && amountText === chip.amount
             ? 'border-[#0a0a0a] bg-[#0a0a0a] text-[#fafafa]'
             : 'border-[#e5e5e5] bg-white text-[#0a0a0a]'"
-          :disabled="busy"
-          @click="applyPreset(preset)"
+          :disabled="!amountChipsEnabled"
+          @click="applyPercent(chip.percent)"
         >
-          {{ preset }}
+          {{ chip.label }}
         </button>
         <button
           type="button"
@@ -537,7 +555,7 @@ watch(() => route.query.asset, (value) => {
           :class="isMaxActive
             ? 'border-[#0a0a0a] bg-[#0a0a0a] text-[#fafafa]'
             : 'border-[#e5e5e5] bg-white text-[#0a0a0a]'"
-          :disabled="!maxChipEnabled"
+          :disabled="!amountChipsEnabled"
           @click="applyMax"
         >
           {{ t('payMax') }}

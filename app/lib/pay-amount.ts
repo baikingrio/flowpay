@@ -5,13 +5,9 @@ import { formatUsdcFromBase } from './usdc-amount'
 
 export type PayAsset = 'mon' | 'usdc'
 
-/** Testnet-sized presets shown as quick-amount chips on the pay page. */
-export const USDC_AMOUNT_PRESETS = ['10', '50', '100'] as const
-export const MON_AMOUNT_PRESETS = ['0.01', '0.05', '0.1'] as const
-
-export function amountPresetsFor(asset: PayAsset): readonly string[] {
-  return asset === 'usdc' ? USDC_AMOUNT_PRESETS : MON_AMOUNT_PRESETS
-}
+/** Percent chips on the pay page (Max is separate, labeled via i18n). */
+export const PAY_AMOUNT_PERCENTS = [25, 50, 75] as const
+export type PayAmountPercent = (typeof PAY_AMOUNT_PERCENTS)[number]
 
 /**
  * Gas left behind when sending Max MON.
@@ -67,3 +63,43 @@ export function formatMaxPayAmount(
     return undefined
   return formatMaxMonAmount(balances.balanceWei)
 }
+
+/** Max sendable in base units (USDC 6 decimals / MON wei). Undefined when Max is unavailable. */
+export function maxSendableBase(
+  asset: PayAsset,
+  balances: { usdcBase?: bigint, balanceWei?: bigint },
+): bigint | undefined {
+  if (asset === 'usdc') {
+    if (balances.usdcBase === undefined || balances.usdcBase <= 0n)
+      return undefined
+    return balances.usdcBase
+  }
+  if (balances.balanceWei === undefined)
+    return undefined
+  const gas = monMaxGasReserve()
+  if (balances.balanceWei <= gas)
+    return undefined
+  return balances.balanceWei - gas
+}
+
+/**
+ * Floor(max × percent / 100) in base units, then format for the amount field.
+ * Never exceeds max; returns undefined when Max is unavailable or the percent rounds to 0.
+ */
+export function formatPercentPayAmount(
+  asset: PayAsset,
+  balances: { usdcBase?: bigint, balanceWei?: bigint },
+  percent: PayAmountPercent,
+): string | undefined {
+  const max = maxSendableBase(asset, balances)
+  if (max === undefined)
+    return undefined
+  const portion = (max * BigInt(percent)) / 100n
+  if (portion <= 0n)
+    return undefined
+  if (asset === 'usdc')
+    return formatUsdcFromBase(portion)
+  return trimAmountText(formatEther(portion))
+}
+
+

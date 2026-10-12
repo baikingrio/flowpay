@@ -2,22 +2,21 @@ import { describe, expect, it } from 'vitest'
 import { formatEther, parseEther } from 'viem'
 
 import {
-  amountPresetsFor,
+  PAY_AMOUNT_PERCENTS,
   formatMaxMonAmount,
   formatMaxPayAmount,
   formatMaxUsdcAmount,
+  formatPercentPayAmount,
+  maxSendableBase,
   monMaxGasReserve,
   trimAmountText,
 } from '../app/lib/pay-amount'
 import { estimateTransferGasCost } from '../app/lib/sponsored'
+import { formatUsdcFromBase } from '../app/lib/usdc-amount'
 
-describe('amountPresetsFor', () => {
-  it('returns USDC presets', () => {
-    expect(amountPresetsFor('usdc')).toEqual(['10', '50', '100'])
-  })
-
-  it('returns MON presets', () => {
-    expect(amountPresetsFor('mon')).toEqual(['0.01', '0.05', '0.1'])
+describe('PAY_AMOUNT_PERCENTS', () => {
+  it('exposes 25 / 50 / 75 for both assets', () => {
+    expect(PAY_AMOUNT_PERCENTS).toEqual([25, 50, 75])
   })
 })
 
@@ -69,5 +68,58 @@ describe('formatMaxPayAmount', () => {
     expect(formatMaxPayAmount('mon', {})).toBeUndefined()
     expect(formatMaxPayAmount('mon', { balanceWei: 0n })).toBeUndefined()
     expect(formatMaxPayAmount('mon', { balanceWei: parseEther('0.05') })).toBeTruthy()
+  })
+})
+
+describe('maxSendableBase', () => {
+  it('returns full USDC base and MON minus gas', () => {
+    expect(maxSendableBase('usdc', { usdcBase: 100_000_000n })).toBe(100_000_000n)
+    expect(maxSendableBase('usdc', { usdcBase: 0n })).toBeUndefined()
+    expect(maxSendableBase('usdc', {})).toBeUndefined()
+
+    const gas = estimateTransferGasCost()
+    expect(maxSendableBase('mon', { balanceWei: parseEther('1') })).toBe(parseEther('1') - gas)
+    expect(maxSendableBase('mon', { balanceWei: gas })).toBeUndefined()
+    expect(maxSendableBase('mon', {})).toBeUndefined()
+  })
+})
+
+describe('formatPercentPayAmount', () => {
+  it('floors USDC percents of max and never exceeds it', () => {
+    const usdcBase = 100_000_000n // 100 mUSDC
+    expect(formatPercentPayAmount('usdc', { usdcBase }, 25)).toBe('25')
+    expect(formatPercentPayAmount('usdc', { usdcBase }, 50)).toBe('50')
+    expect(formatPercentPayAmount('usdc', { usdcBase }, 75)).toBe('75')
+
+    // 1 base unit → 25% floors to 0 → undefined
+    expect(formatPercentPayAmount('usdc', { usdcBase: 1n }, 25)).toBeUndefined()
+
+    // Odd balance: floor(3_000_001 * 25 / 100) = 750_000 → 0.75
+    const odd = 3_000_001n
+    const portion = (odd * 25n) / 100n
+    expect(portion).toBe(750_000n)
+    expect(formatPercentPayAmount('usdc', { usdcBase: odd }, 25)).toBe(formatUsdcFromBase(portion))
+    expect(portion).toBeLessThanOrEqual(odd)
+  })
+
+  it('floors MON percents of max (after gas reserve)', () => {
+    const gas = estimateTransferGasCost()
+    const balanceWei = parseEther('1')
+    const max = balanceWei - gas
+    expect(formatPercentPayAmount('mon', { balanceWei }, 25)).toBe(
+      trimAmountText(formatEther((max * 25n) / 100n)),
+    )
+    expect(formatPercentPayAmount('mon', { balanceWei }, 50)).toBe(
+      trimAmountText(formatEther((max * 50n) / 100n)),
+    )
+    expect(formatPercentPayAmount('mon', { balanceWei }, 75)).toBe(
+      trimAmountText(formatEther((max * 75n) / 100n)),
+    )
+    expect(formatPercentPayAmount('mon', { balanceWei: gas }, 50)).toBeUndefined()
+  })
+
+  it('returns undefined when balances are not loaded', () => {
+    expect(formatPercentPayAmount('usdc', {}, 50)).toBeUndefined()
+    expect(formatPercentPayAmount('mon', {}, 50)).toBeUndefined()
   })
 })
