@@ -9,6 +9,7 @@ import { formatMon } from '~/lib/ledger'
 import { clearPendingPayUri, readPendingPayUri } from '~/lib/pending-pay-uri'
 import { IS_MOCK_USDC, USDC_ADDRESS } from '~/lib/tokens'
 import { parseAssetParam } from '~/lib/assets'
+import { amountPresetsFor, formatMaxPayAmount } from '~/lib/pay-amount'
 import { formatUsdcFromBase, parseUsdcToBase } from '~/lib/usdc-amount'
 
 const { t } = useI18n()
@@ -103,6 +104,20 @@ const canPay = computed(() => {
   return account.balanceWei !== undefined && account.balanceWei > parsedAmount.value
 })
 
+const amountPresets = computed(() => amountPresetsFor(asset.value))
+/** Max sendable amount text for the current asset; undefined → Max chip disabled. */
+const maxAmountText = computed(() => {
+  if (!account.address)
+    return undefined
+  return formatMaxPayAmount(asset.value, {
+    usdcBase: account.usdcBase,
+    balanceWei: account.balanceWei,
+  })
+})
+const maxChipEnabled = computed(() => maxAmountText.value !== undefined && !busy.value)
+const isMaxActive = computed(() =>
+  maxAmountText.value !== undefined && amountText.value === maxAmountText.value,
+)
 
 const statusLine = computed(() =>
   Boolean(
@@ -159,6 +174,29 @@ function pressKey(key: typeof keys[number]) {
   const [whole = '', fraction] = next.split('.')
   if (whole.length > 18 || (fraction !== undefined && fraction.length > 18))
     return
+  amountText.value = next
+}
+
+/** Quick-amount chip: same field the keypad writes. */
+function applyPreset(value: string) {
+  if (busy.value || success.value)
+    return
+  localError.value = undefined
+  amountText.value = value
+}
+
+/** Max: full mUSDC, or MON minus gas reserve. No-op when Max is unavailable. */
+function applyMax() {
+  if (busy.value || success.value)
+    return
+  const next = maxAmountText.value
+  if (next === undefined) {
+    // Balance too low for Max — surface the existing gas / faucet hint path.
+    if (asset.value === 'mon' || (account.balanceWei !== undefined && account.balanceWei === 0n))
+      localError.value = 'insufficientGas'
+    return
+  }
+  localError.value = undefined
   amountText.value = next
 }
 
@@ -477,6 +515,33 @@ watch(() => route.query.asset, (value) => {
           <span :class="amountText ? 'text-[#0a0a0a]' : 'text-[#737373]'">{{ amountText || '0' }}</span>
           <span class="ml-1 text-[13px] font-medium tracking-normal text-[#737373]">{{ assetLabel }}</span>
         </p>
+      </div>
+
+      <div class="flex gap-1.5" role="group" :aria-label="t('payQuickAmounts')">
+        <button
+          v-for="preset in amountPresets"
+          :key="preset"
+          type="button"
+          class="h-7 min-w-0 flex-1 rounded-full border px-2 text-[12px] font-medium tabular-nums transition-colors disabled:opacity-40"
+          :class="amountText === preset
+            ? 'border-[#0a0a0a] bg-[#0a0a0a] text-[#fafafa]'
+            : 'border-[#e5e5e5] bg-white text-[#0a0a0a]'"
+          :disabled="busy"
+          @click="applyPreset(preset)"
+        >
+          {{ preset }}
+        </button>
+        <button
+          type="button"
+          class="h-7 min-w-0 flex-1 rounded-full border px-2 text-[12px] font-medium transition-colors disabled:opacity-40"
+          :class="isMaxActive
+            ? 'border-[#0a0a0a] bg-[#0a0a0a] text-[#fafafa]'
+            : 'border-[#e5e5e5] bg-white text-[#0a0a0a]'"
+          :disabled="!maxChipEnabled"
+          @click="applyMax"
+        >
+          {{ t('payMax') }}
+        </button>
       </div>
     </div>
 
